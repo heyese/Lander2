@@ -45,6 +45,9 @@ class Ball():
         self.rect = pygame.draw.circle(windowSurface, WHITE, (gameRect.centerx,gameRect.centery), 20, 0)
         self.fuel = fuel
         self.shield = shield
+        self.shield_active = False
+        self.shield_colour = BLUE
+
 
     def update_pos(self,msecs):
         (self.old_x,self.old_y) = (self.x,self.y)
@@ -72,16 +75,26 @@ class Ball():
         self.update_vel(msecs)
         self.update_pos(msecs)
         self.update_accel()
+        self.update_shield()
         
     def draw(self):
         # Black out the previous position, then draw our new one.
         self.old_rect = pygame.draw.circle(windowSurface, BLACK, (int(self.old_x),int(self.old_y)), 22, 0)
         pygame.draw.circle(windowSurface, WHITE, (self.rect.centerx,self.rect.centery), 20, 0)
+        if self.shield_active == True:
+            pygame.draw.circle(windowSurface, self.shield_colour, (self.rect.centerx,self.rect.centery), 20, 5)
+            self.shield_colour = BLUE # Collision sets the colour to be random.  want it set back after
         
+    def update_shield(self):
+        self.shield_active = False
+        if pygame.mouse.get_pressed()[2] == True and self.shield > 0:
+            self.shield -= 1
+            self.shield_active = True
+       
     def update_accel(self):
         if pygame.mouse.get_pressed()[0] == True:
             (mouse_x,mouse_y) = pygame.mouse.get_pos()
-            self.fuel = self.fuel - 1
+            self.fuel -= 1
             if self.fuel <= 0:
                 self.fuel = 0
                 # Ran out of fuel ... no more acceleration
@@ -112,7 +125,45 @@ class Ball():
             return False
         return True
             
-           
+    def shielded_fixed_collision(self,object):
+        # This is the function called when we hit an object that is fixed
+        # - ie. an asteroid, the landing pad or the ground - and need to bounce
+        # off it
+        self.shield_colour = (random.randint(0,255),random.randint(0,255),random.randint(0,255))
+        (Bx,By) = (self.rect.centerx,self.rect.centery) # Centre of ball
+        (Ax,Ay) = (object.rect.centerx,object.rect.centery) # Centre of asteroid
+        # (Ax-Bx,Ay-By) - vector from ball centre to asteroid centre 
+        mod = math.sqrt((Ax-Bx)**2 + (Ay-By)**2)
+        e2 = ((1.0/mod)*(Ax-Bx),(1.0/mod)*(Ay-By)) # unit vector from ball to asteroid
+        # Now need to calculate other unit vector
+        # v = |v|cos& e2  +  |v|sin& e1, where v.e2 = |v| cos&
+        v = (float(self.x_vel),float(self.y_vel))
+        v_dot_e2 = v[0]*e2[0] + v[1]*e2[1]
+        mod_v = math.sqrt(v[0]**2 + v[1]**2)
+        angle = math.acos(v_dot_e2/mod_v)
+        e1 = ((v[0] - mod_v*math.cos(angle)*e2[0])/(mod_v*math.sin(angle)),(v[1] - mod_v*math.cos(angle)*e2[1])/(mod_v*math.sin(angle)))
+        #print "Asteroid centre is : (%s,%s)" % (object.rect.centerx,object.rect.centery)
+        #print "Asteroid centre as calculated by using e2 is : (%s,%s)" % (self.rect.centerx + mod*e2[0],self.rect.centery + mod*e2[1])
+        #print "mod e1 is %s" % math.sqrt(e1[0]**2 + e1[1]**2)
+        #print "e1 dot e2 is %s" % (e1[0]*e2[0] + e1[1]*e2[1])
+        #print "old V vector is : %s" % str(v)
+        #print "old V using e1 and e2 is : (%0.1f, %0.1f)" % ((mod_v*math.cos(angle)*e2[0] + mod_v*math.sin(angle)*e1[0]),(mod_v*math.cos(angle)*e2[1] + mod_v*math.sin(angle)*e1[1]))
+
+        # When we hit, the e2 component (which is the resolved bit pointing directly at the asteroid) is reversed
+        # It may be that this is a second collision in a row (ie. we've not yet quite escaped the asteroid after the first collision)
+        # in which case I don't want to reverse e2.  
+        # Since e2 is pointing from the ball to the asteroid, I simply test whether it's coefficient is positive or negative and don't reverse
+        # it if it's negative.
+        #v_wrt_e1_and_e2 = ((mod_v*math.cos(angle)*e2[0] + mod_v*math.sin(angle)*e1[0]),(mod_v*math.cos(angle)*e2[1] + mod_v*math.sin(angle)*e1[1]))
+        new_v = ((mod_v*math.sin(angle)*e1[0] - mod_v*math.cos(angle)*e2[0]),(mod_v*math.sin(angle)*e1[1] - mod_v*math.cos(angle)*e2[1]))
+        if mod_v * math.cos(angle) >= 0:
+            (self.x_vel,self.y_vel) = (new_v[0],new_v[1])
+        #print "new V vector is : %s" % str(new_v)
+
+        
+        
+        return
+        
         
         
 class Game:
@@ -123,7 +174,7 @@ class Game:
 # number of lives?
 # start animation?
     def __init__(self):
-        self.no_of_asteroids = 10
+        self.no_of_asteroids = 0
         self.pad_size = 50
         self.score = 0
         self.level = 0
@@ -133,7 +184,7 @@ class Game:
 
     
     def next_level(self):
-        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),300,200)
+        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),300,400)
         self.level += 1
         self.score += 100
         self.no_of_asteroids += 3
@@ -143,7 +194,7 @@ class Game:
         self.asteroids = []
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 100,gameRect.bottom))
-            radius = random.randrange(10,40)
+            radius = random.randrange(20,100)
             asteroid = Asteroid((x,y),radius)
             self.asteroids.append(asteroid)
             
@@ -179,11 +230,13 @@ def draw_text(text):
     except: pass
     # Draw new text.  Important to make sure the text isn't transparent so we can clear it
     fuel = "Fuel (%d)" % game.ball.fuel
+    shield = "Shield (%d)" % game.ball.shield
     #position = "Position (%d,%d)" % (game.ball.rect.centerx,game.ball.rect.centery)
     velocity = "Velocity (%0.1f, %0.1f)" % (game.ball.x_vel,game.ball.y_vel)
+    speed = "Speed (%0.1f)" % (math.sqrt(game.ball.x_vel ** 2 + game.ball.y_vel ** 2))
     #acceleration = "Acceleration (%0.1f, %0.1f)" % (game.ball.x_accel,game.ball.y_accel)
-    fps = "FPS: %s" % clock.get_fps()
-    text_string = fuel.ljust(30) + fps.ljust(30) + velocity.ljust(30)
+    fps = "FPS: %0.1f" % clock.get_fps()
+    text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20)
     text = font.render(text_string, 0, WHITE, BLACK)
     windowSurface.blit(text, (0,0))
     return text
@@ -214,11 +267,16 @@ while True:
             pygame.quit()
             sys.exit()
 
+    # COLLISIONS        
     # Check for collisions with asteroids
     # There are ways to improve the collision detection - this one isn't great
     index = game.ball.rect.collidelist(game.asteroids)
     if index != -1:
-        game.it_is_game_over()
+        if game.ball.shield_active == False:
+            game.it_is_game_over()
+        else:
+            # We are colliding with an asteroid, but our amazing shield saves us!
+            game.ball.shielded_fixed_collision(game.asteroids[index])
     
 
     # Check landing pad collision
