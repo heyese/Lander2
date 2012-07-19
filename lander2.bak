@@ -37,30 +37,20 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
 
-class Ball(pygame.sprite.Sprite):
-    radius = 20
+class Ball():
     def __init__(self,(x,y),fuel,shield):
-        pygame.sprite.Sprite.__init__(self, self.groups)
-        self.image = pygame.Surface((2*Ball.radius, 2*Ball.radius))
-        self.image.set_colorkey(BLACK) # make the black background transparent
-        self.rect = self.image.get_rect()
-        pygame.draw.circle(self.image, WHITE, self.rect.center, Ball.radius)
-        self.image = self.image.convert_alpha()
-        self.radius = Ball.radius
-        self.rect.center = (x,y)    
-        (self.x_vel,self.y_vel) = (0,0) # vel is pixels per second    
-        (self.x,self.y) = (x,y)    
-        (self.x_accel,self.y_accel) = (0,0)    
+        (self.x_vel,self.y_vel) = (0,0) # vel is pixels per second
+        (self.x,self.y) = (x,y)
+        (self.x_accel,self.y_accel) = (0,0)
+        self.rect = pygame.draw.circle(windowSurface, WHITE, (gameRect.centerx,gameRect.centery), 20, 0)
         self.fuel = fuel
         self.shield = shield
         self.shield_active = False
         self.shield_colour = BLUE
-        
-        
-
 
 
     def update_pos(self,msecs):
+        (self.old_x,self.old_y) = (self.x,self.y)
         x = self.x + self.x_vel * msecs / 1000.0 + 0.5 * self.x_accel * (msecs / 1000.0) ** 2
         y = self.y + self.y_vel * msecs / 1000.0 + 0.5 * self.y_accel * (msecs / 1000.0) ** 2
         (self.x,self.y) = (x,y)
@@ -87,9 +77,12 @@ class Ball(pygame.sprite.Sprite):
         self.update_accel()
         self.update_shield()
         
-    def draw_shield(self):
+    def draw(self):
+        # Black out the previous position, then draw our new one.
+        self.old_rect = pygame.draw.circle(windowSurface, BLACK, (int(self.old_x),int(self.old_y)), 22, 0)
+        pygame.draw.circle(windowSurface, WHITE, (self.rect.centerx,self.rect.centery), 20, 0)
         if self.shield_active == True:
-            screen.blit(self.shield_image,self.rect.center) #pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), 20, 5)
+            pygame.draw.circle(windowSurface, self.shield_colour, (self.rect.centerx,self.rect.centery), 20, 5)
             self.shield_colour = BLUE # Collision sets the colour to be random.  want it set back after
         
     def update_shield(self):
@@ -191,23 +184,19 @@ class Game:
 
     
     def next_level(self):
+        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),600,1000)
         self.level += 1
         self.score += 100
         self.no_of_asteroids += 3
         self.level_animation()
-        screen.fill(BLACK)
-        
-        self.ballGroup = pygame.sprite.Group() # Yes, I know there's only one ball
-        Ball.groups = self.ballGroup           # Sprite class uses groups a lot
-        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),600,1000)
-
-
-        self.asteroidGroup = pygame.sprite.Group()
-        Asteroid.groups = self.asteroidGroup # Every created asteroid is a member of this group
+        windowSurface.fill(BLACK)
+        # Draw the asteroids!
+        self.asteroids = []
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 100,gameRect.bottom))
             radius = random.randrange(20,100)
             asteroid = Asteroid((x,y),radius)
+            self.asteroids.append(asteroid)
             
         # draw the landing strip
         self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
@@ -222,31 +211,22 @@ class Game:
         sys.exit()
 
 # the asteroid class!
-class Asteroid(pygame.sprite.Sprite):
-    
+class Asteroid:
     def __init__(self,(x,y),radius=10):
-        pygame.sprite.Sprite.__init__(self, self.groups)
-        self.image = pygame.Surface((2*radius, 2*radius))
-        self.image.set_colorkey(BLACK) # make the black background transparent
-        self.rect = self.image.get_rect()
-        pygame.draw.circle(self.image, RED, self.rect.center, radius)
-        self.image = self.image.convert_alpha()
-        self.radius = radius
-        self.rect.center = (x,y)
-        
+        self.rect = pygame.draw.circle(windowSurface, RED, (x,y), radius, 0)
 
 #############################################################################################
 
 class LandingStrip:
     def __init__(self,(x,y),length):
-        self.rect = pygame.draw.rect(screen, BLUE, (x,y,length,10))
+        self.rect = pygame.draw.rect(windowSurface, BLUE, (x,y,length,10))
 
 
 def draw_text(text):
     # Clear the old line of text
     try:
         text.fill(BLACK)
-        screen.blit(text, (0,0))
+        windowSurface.blit(text, (0,0))
     except: pass
     # Draw new text.  Important to make sure the text isn't transparent so we can clear it
     fuel = "Fuel (%d)" % game.ball.fuel
@@ -258,21 +238,15 @@ def draw_text(text):
     fps = "FPS: %0.1f" % clock.get_fps()
     text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20)
     text = font.render(text_string, 0, WHITE, BLACK)
-    screen.blit(text, (0,0))
+    windowSurface.blit(text, (0,0))
     return text
 
 #############################################################################################
 
 # set up the window
-screen = pygame.display.set_mode((1200, 650), 0, 32)
-
-background = pygame.Surface(screen.get_size())  # Create empty pygame surface
-background.fill(BLACK)     # Fill the background white color (red,green,blue)
-background = background.convert()  # Convert Surface to make blitting faster
-screen.blit(background, (0, 0))
-
+windowSurface = pygame.display.set_mode((1200, 650), 0, 32)
 pygame.display.set_caption('Lander')
-gameRect = screen.get_rect()
+gameRect = windowSurface.get_rect()
 accel_magnitude = 200
 font = pygame.font.Font(None, 36)
 text = None
@@ -319,20 +293,20 @@ while True:
     
     # Update the screen
     # acceleration calculation uses that we've used pygame.event.get()
-    #game.asteroidGroup.clear(screen, background) - not needed as asteroids never move
-    game.ballGroup.clear(screen, background)
-    # Draw function for asteroids will be needed when explosions go over them
-    game.asteroidGroup.draw(screen)
-    game.ballGroup.draw(screen)
-    pygame.display.update()  
-
     if game.game_over == False:
         game.ball.update(msecs)
-        #game.ball.draw_shield()
+        game.ball.draw()
         text = draw_text(text)
+    
+    
+    
 
 
 
+    
+
+    
+    
     
     # draw the window onto the screen
     pygame.display.update()  
