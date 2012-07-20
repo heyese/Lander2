@@ -36,6 +36,41 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
+class Engine(pygame.sprite.Sprite):
+    # Just playing around here.  Find it very hard to animate anythig!
+    # Rotation doesn't work as I hoped it would - things go all squiffy
+    # I want a way to animate engine flames coming out of the ball, basically.
+    # In fact, ball.rect.center just doesn't seem to be the center of the ball!  Confused.
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.image = pygame.Surface((5*Ball.radius, 5*Ball.radius))
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.rect = self.image.get_rect()
+        pygame.draw.line(self.image, RED, self.rect.center, self.rect.bottomright)
+        self.image = self.image.convert_alpha()
+        self.image_copy = self.image.copy()
+    def update(self,ball):
+        self.rect.center = ball.rect.center
+        pos = pygame.mouse.get_pos()
+        
+        (x,y) = (pos[0] - self.rect.centerx,pos[1] - self.rect.centery)
+        if x == 0:
+            #if y == 0:
+            #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
+            if y > 0: angle = math.pi / 2
+            if y < 0: angle = (3.0/2) * math.pi
+        else:
+            if x > 0 and y >= 0 or x > 0 and y < 0: angle = math.atan((1.0*y)/x)
+            if x < 0 and y >= 0 or x < 0 and y < 0: angle = math.atan((1.0*y)/x) + math.pi        
+        
+        
+        angle_in_degrees = angle * 180.0 / math.pi
+        print angle, angle_in_degrees
+        
+        self.image = pygame.transform.rotate(self.image_copy, -angle_in_degrees)
+        new_rect = self.image.get_rect()
+        new_rect.center = self.rect.center        
+
 
 class Ball(pygame.sprite.Sprite):
     radius = 20
@@ -45,6 +80,7 @@ class Ball(pygame.sprite.Sprite):
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, WHITE, self.rect.center, Ball.radius)
+        pygame.draw.circle(self.image, GREEN, (self.rect.centerx,int(self.rect.height*0.25)),int(Ball.radius*0.25))
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
 
@@ -57,6 +93,7 @@ class Ball(pygame.sprite.Sprite):
         self.shield = shield
         self.shield_active = False
         self.shield_colour = BLUE
+        self.shield_timer = None
 
     def update_pos(self,msecs):
         x = self.x + self.x_vel * msecs / 1000.0 + 0.5 * self.x_accel * (msecs / 1000.0) ** 2
@@ -85,12 +122,17 @@ class Ball(pygame.sprite.Sprite):
         self.update_accel()
         self.update_shield()
         
-    def draw_shield(self):
+    def draw_shield(self,msecs):
         if self.shield_active == True:
-            pygame.draw.circle(screen, WHITE, (self.rect.centerx,self.rect.centery), 20)
-
-            pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), 20, 5)
-            self.shield_colour = BLUE # Collision sets the colour to be random.  want it set back after
+            if self.shield_timer == None:
+                pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), Ball.radius, 5)
+            else:
+                # We have just collided with something and want shield to flash for visible length of time
+                temp_shield_colour = (random.randint(0,255),random.randint(0,255),random.randint(0,255))
+                pygame.draw.circle(screen, temp_shield_colour, (self.rect.centerx,self.rect.centery), Ball.radius,8)
+                
+                self.shield_timer += msecs
+                if self.shield_timer > 150: self.shield_timer = None
         
     def update_shield(self):
         if (pygame.mouse.get_pressed()[2] == True or game.keystate[var.K_s]) and self.shield > 0:
@@ -133,11 +175,11 @@ class Ball(pygame.sprite.Sprite):
             return False
         return True
             
-    def shielded_fixed_collision(self,object):
+    def shielded_asteroid_collision(self,object):
         # This is the function called when we hit an object that is fixed
         # - ie. an asteroid, the landing pad or the ground - and need to bounce
         # off it
-        self.shield_colour = (random.randint(0,255),random.randint(0,255),random.randint(0,255))
+        self.shield_timer = 0 # Want shield to flash for a visible length of time on impact
         (Bx,By) = (self.rect.centerx,self.rect.centery) # Centre of ball
         (Ax,Ay) = (object.rect.centerx,object.rect.centery) # Centre of asteroid
         # (Ax-Bx,Ay-By) - vector from ball centre to asteroid centre 
@@ -148,6 +190,7 @@ class Ball(pygame.sprite.Sprite):
         v = (float(self.x_vel),float(self.y_vel))
         v_dot_e2 = v[0]*e2[0] + v[1]*e2[1]
         mod_v = math.sqrt(v[0]**2 + v[1]**2)
+        if mod_v == 0: return # 
         angle = math.acos(v_dot_e2/mod_v)
         e1 = ((v[0] - mod_v*math.cos(angle)*e2[0])/(mod_v*math.sin(angle)),(v[1] - mod_v*math.cos(angle)*e2[1])/(mod_v*math.sin(angle)))
         #print "Asteroid centre is : (%s,%s)" % (object.rect.centerx,object.rect.centery)
@@ -182,7 +225,7 @@ class Game:
 # number of lives?
 # start animation?
     def __init__(self):
-        self.no_of_asteroids = 5
+        self.no_of_asteroids = 10
         self.pad_size = 50
         self.score = 0
         self.level = 0
@@ -200,8 +243,11 @@ class Game:
         
         self.ballGroup = pygame.sprite.Group() # Yes, I know there's only one ball
         Ball.groups = self.ballGroup           # Sprite class uses groups a lot
-        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),600,1000)
+        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000)
 
+        self.engineGroup = pygame.sprite.Group()
+        Engine.groups = self.engineGroup
+        self.engine = Engine()
 
         self.asteroidGroup = pygame.sprite.Group()
         Asteroid.groups = self.asteroidGroup # Every created asteroid is a member of this group
@@ -311,7 +357,7 @@ while True:
                 game.it_is_game_over()
             else:
                 # We are colliding with an asteroid, but our amazing shield saves us!
-                game.ball.shielded_fixed_collision(asteroid)
+                game.ball.shielded_asteroid_collision(asteroid)
     
 
     # Check landing pad collision
@@ -328,12 +374,16 @@ while True:
     
     # Update the screen
     # acceleration calculation uses that we've used pygame.event.get()
-    #game.asteroidGroup.clear(screen, background) - not needed as asteroids never move
+    game.asteroidGroup.clear(screen, background)
     game.ballGroup.clear(screen, background)
+    #game.engineGroup.clear(screen, background)
     # Draw function for asteroids will be needed when explosions go over them
     game.asteroidGroup.draw(screen)
+    game.engineGroup.draw(screen)
     game.ballGroup.draw(screen)
-    game.ball.draw_shield()
+    
+    game.ball.draw_shield(msecs)
+    game.engineGroup.update(game.ball)
     game.ball.update(msecs)
     text = draw_text(text)
     
