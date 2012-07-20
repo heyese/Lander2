@@ -46,19 +46,17 @@ class Ball(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, WHITE, self.rect.center, Ball.radius)
         self.image = self.image.convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
+
         self.radius = Ball.radius
         self.rect.center = (x,y)    
         (self.x_vel,self.y_vel) = (0,0) # vel is pixels per second    
         (self.x,self.y) = (x,y)    
-        (self.x_accel,self.y_accel) = (0,0)    
+        (self.x_accel,self.y_accel) = (0,0)
         self.fuel = fuel
         self.shield = shield
         self.shield_active = False
         self.shield_colour = BLUE
-        
-        
-
-
 
     def update_pos(self,msecs):
         x = self.x + self.x_vel * msecs / 1000.0 + 0.5 * self.x_accel * (msecs / 1000.0) ** 2
@@ -89,17 +87,20 @@ class Ball(pygame.sprite.Sprite):
         
     def draw_shield(self):
         if self.shield_active == True:
-            screen.blit(self.shield_image,self.rect.center) #pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), 20, 5)
+            pygame.draw.circle(screen, WHITE, (self.rect.centerx,self.rect.centery), 20)
+
+            pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), 20, 5)
             self.shield_colour = BLUE # Collision sets the colour to be random.  want it set back after
         
     def update_shield(self):
-        self.shield_active = False
-        if pygame.mouse.get_pressed()[2] == True and self.shield > 0:
+        if (pygame.mouse.get_pressed()[2] == True or game.keystate[var.K_s]) and self.shield > 0:
             self.shield -= 1
             self.shield_active = True
+        else:
+            self.shield_active = False
        
     def update_accel(self):
-        if pygame.mouse.get_pressed()[0] == True:
+        if pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a]:
             (mouse_x,mouse_y) = pygame.mouse.get_pos()
             self.fuel -= 1
             if self.fuel <= 0:
@@ -108,7 +109,7 @@ class Ball(pygame.sprite.Sprite):
                 (self.x_accel, self.y_accel) = (0,0)
                 return                
         else:
-            # There is no acceleration when the mouse button isn't being pressed
+            # There is no acceleration when the mouse button or 's' isn't being pressed
             (self.x_accel, self.y_accel) = (0,0)
             return
         (x,y) = (mouse_x - self.rect.centerx,mouse_y - self.rect.centery)
@@ -231,6 +232,7 @@ class Asteroid(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, RED, self.rect.center, radius)
         self.image = self.image.convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
         self.radius = radius
         self.rect.center = (x,y)
         
@@ -281,7 +283,7 @@ clock = pygame.time.Clock()
 # Create the game
 game = Game()
 
-
+###############################################################################################
 
 # run the game loop
 while True:
@@ -292,17 +294,24 @@ while True:
         if event.type == var.QUIT:
             pygame.quit()
             sys.exit()
+    
+    game.keystate = pygame.key.get_pressed()
+
 
     # COLLISIONS        
     # Check for collisions with asteroids
     # There are ways to improve the collision detection - this one isn't great
     index = game.ball.rect.collidelist(game.asteroids)
-    if index != -1:
-        if game.ball.shield_active == False:
-            game.it_is_game_over()
-        else:
-            # We are colliding with an asteroid, but our amazing shield saves us!
-            game.ball.shielded_fixed_collision(game.asteroids[index])
+    # First we do a quick cheap check to see if anything might be colliding ...
+    asteroid_collisions = pygame.sprite.spritecollide(game.ball,game.asteroidGroup,False)
+    for asteroid in asteroid_collisions:
+        # Now we accurately check out those possible collisions
+        if pygame.sprite.collide_mask(game.ball,asteroid):
+            if game.ball.shield_active == False:
+                game.it_is_game_over()
+            else:
+                # We are colliding with an asteroid, but our amazing shield saves us!
+                game.ball.shielded_fixed_collision(asteroid)
     
 
     # Check landing pad collision
@@ -324,15 +333,9 @@ while True:
     # Draw function for asteroids will be needed when explosions go over them
     game.asteroidGroup.draw(screen)
     game.ballGroup.draw(screen)
-    pygame.display.update()  
-
-    if game.game_over == False:
-        game.ball.update(msecs)
-        #game.ball.draw_shield()
-        text = draw_text(text)
-
-
-
+    game.ball.draw_shield()
+    game.ball.update(msecs)
+    text = draw_text(text)
     
     # draw the window onto the screen
     pygame.display.update()  
