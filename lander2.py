@@ -36,40 +36,53 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
-class Engine(pygame.sprite.Sprite):
+class Engine():
     # Just playing around here.  Find it very hard to animate anythig!
     # Rotation doesn't work as I hoped it would - things go all squiffy
     # I want a way to animate engine flames coming out of the ball, basically.
     # In fact, ball.rect.center just doesn't seem to be the center of the ball!  Confused.
-    def __init__(self):
-        pygame.sprite.Sprite.__init__(self, self.groups)
-        self.image = pygame.Surface((5*Ball.radius, 5*Ball.radius))
-        self.image.set_colorkey(BLACK) # make the black background transparent
-        self.rect = self.image.get_rect()
-        pygame.draw.line(self.image, RED, self.rect.center, self.rect.bottomright)
-        self.image = self.image.convert_alpha()
+    
+    engines = []
+    def __init__(self,item):
+        Engine.engines.append(self) # add this instance to the class list
+        self.item = item # this could be the ship, a missile or whatever
+        self.image = pygame.Surface((5*item.radius, 5*item.radius))
         self.image_copy = self.image.copy()
-    def update(self,ball):
-        self.rect.center = ball.rect.center
-        pos = pygame.mouse.get_pos()
+        self.image_copy.fill(BLACK)
+        self.draw()
+
+    def draw(self):
+        self.image = self.image_copy.copy()
+        self.rect = self.image.get_rect()
+        self.image.set_colorkey(BLACK) # make the black background transparent
         
-        (x,y) = (pos[0] - self.rect.centerx,pos[1] - self.rect.centery)
-        if x == 0:
-            #if y == 0:
-            #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
-            if y > 0: angle = math.pi / 2
-            if y < 0: angle = (3.0/2) * math.pi
-        else:
-            if x > 0 and y >= 0 or x > 0 and y < 0: angle = math.atan((1.0*y)/x)
-            if x < 0 and y >= 0 or x < 0 and y < 0: angle = math.atan((1.0*y)/x) + math.pi        
+        print self.item.angle * 180.0 / math.pi
+        #print "Line coordinates are: (%s,%s) - (%s,%s)" % (self.rect.center[0],self.rect.center[1],int(self.rect.centerx + length * math.cos(self.item.angle)),int(self.rect.centery + length * math.sin(self.item.angle)))
+        #pygame.draw.line(self.image, WHITE, self.rect.center, (int(self.rect.centerx + length * math.cos(self.item.angle)),int(self.rect.centery + length * math.sin(self.item.angle))))
+        # Calculating points ...
+        base_of_triangle = (self.rect.centerx - 0.5 * self.item.radius * math.cos(self.item.angle),self.rect.centery - 0.5 * self.item.radius * math.sin(self.item.angle))
+        unit_perp_vector = (math.sin(self.item.angle), -math.cos(self.item.angle))
         
+        # Cente of circle to base of triangle
+        vector1 = (-0.5 * self.item.radius * math.cos(self.item.angle),0.5 * self.item.radius * math.sin(self.item.angle))
         
-        angle_in_degrees = angle * 180.0 / math.pi
-        print angle, angle_in_degrees
+        #Vectors to base corners of triangle
+        p1 = (int(base_of_triangle[0] + 0.5*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] + 0.5*self.item.radius*unit_perp_vector[1]))
+        p2 = (int(base_of_triangle[0] - 0.5*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] - 0.5*self.item.radius*unit_perp_vector[1]))
+        p3 = (int(self.rect.centerx - 2.5 * self.item.radius * math.cos(self.item.angle)),int(self.rect.centery - 2.5 * self.item.radius * math.sin(self.item.angle)))
         
-        self.image = pygame.transform.rotate(self.image_copy, -angle_in_degrees)
-        new_rect = self.image.get_rect()
-        new_rect.center = self.rect.center        
+        pygame.draw.polygon(self.image, RED, [p1, p2, p3] )
+
+        self.image.set_alpha(100)
+        self.image = self.image.convert_alpha()
+        self.rect.center = self.item.rect.center
+        screen.blit(self.image,self.rect)
+    
+    def clear(self):
+        # Here I want to trim the background down to size and blit that
+        # over the image.  Not sure how to do it just nowm so I'll use a square of black.
+        screen.blit(self.image_copy,self.rect)
+        
 
 
 class Ball(pygame.sprite.Sprite):
@@ -80,9 +93,9 @@ class Ball(pygame.sprite.Sprite):
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, WHITE, self.rect.center, Ball.radius)
-        pygame.draw.circle(self.image, GREEN, (self.rect.centerx,int(self.rect.height*0.25)),int(Ball.radius*0.25))
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
+        self.angle = math.pi
 
         self.radius = Ball.radius
         self.rect.center = (x,y)    
@@ -94,6 +107,7 @@ class Ball(pygame.sprite.Sprite):
         self.shield_active = False
         self.shield_colour = BLUE
         self.shield_timer = None
+        self.engine = Engine(self)
 
     def update_pos(self,msecs):
         x = self.x + self.x_vel * msecs / 1000.0 + 0.5 * self.x_accel * (msecs / 1000.0) ** 2
@@ -116,11 +130,27 @@ class Ball(pygame.sprite.Sprite):
             if self.rect.right > gameRect.right: self.rect.right = gameRect.right
             
         (self.x_vel,self.y_vel) = (x_vel,y_vel)
+    def update_mouse_angle_to_ball(self):
+        # Nice to know what angle the mouse is at to the ball
+        pos = pygame.mouse.get_pos()
+        (x,y) = (pos[0] - self.rect.centerx,pos[1] - self.rect.centery)
+        if x == 0:
+            #if y == 0:
+            #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
+            if y > 0: self.angle = math.pi / 2
+            if y < 0: self.angle = (3.0/2) * math.pi
+        else:
+            if x > 0 and y >= 0 or x > 0 and y < 0: self.angle = math.atan((1.0*y)/x)
+            if x < 0 and y >= 0 or x < 0 and y < 0: self.angle = math.atan((1.0*y)/x) + math.pi 
+    
     def update(self,msecs):
+        self.update_mouse_angle_to_ball()
         self.update_vel(msecs)
         self.update_pos(msecs)
         self.update_accel()
         self.update_shield()
+        
+
         
     def draw_shield(self,msecs):
         if self.shield_active == True:
@@ -133,7 +163,43 @@ class Ball(pygame.sprite.Sprite):
                 
                 self.shield_timer += msecs
                 if self.shield_timer > 150: self.shield_timer = None
+    
+    def erase_engine(self):
+        try:
+            self.engine_image.fill(BLACK)
+            #self.engine_image.set_colorkey(BLACK) # make the black background 
+            self.engine_image = self.engine_image.convert_alpha()
+            screen.blit(self.engine_image,self.engine_rect)
+        except:
+            pass
+        return
+
+
+    def draw_engine(self):
+        # if acceleration key is pressed, draw triangles of different
+        # sizes and light colours at appropriate angle to be engine flames.
         
+            
+        '''
+                (x,y) = (mouse_x - self.rect.centerx,mouse_y - self.rect.centery)
+        if x == 0:
+            if y == 0:
+                return (0,0)  # Click on dead center of ball, no force / acceleration applied
+            if y > 0: angle = math.pi / 2
+            if y < 0: angle = (3.0/2) * math.pi
+        else:
+            if x > 0 and y >= 0 or x > 0 and y < 0: angle = math.atan((1.0*y)/x)
+            if x < 0 and y >= 0 or x < 0 and y < 0: angle = math.atan((1.0*y)/x) + math.pi
+        (self.x_accel, self.y_accel) = (accel_magnitude * math.cos(angle),accel_magnitude * math.sin(angle))
+        '''
+        self.engine_image = pygame.Surface((3*Ball.radius, 3*Ball.radius))
+        self.engine_image.set_colorkey(BLACK) # make the black background transparent
+        self.engine_rect = self.engine_image.get_rect()
+        pygame.draw.line(self.engine_image, GREEN, self.engine_rect.center, self.engine_rect.midbottom)
+        self.engine_image = self.engine_image.convert_alpha()
+        self.engine_rect.center = self.rect.center
+        screen.blit(self.engine_image,self.engine_rect)
+    
     def update_shield(self):
         if (pygame.mouse.get_pressed()[2] == True or game.keystate[var.K_s]) and self.shield > 0:
             self.shield -= 1
@@ -241,19 +307,20 @@ class Game:
         self.level_animation()
         screen.fill(BLACK)
         
+        # Set up the sprite groups
+        self.allGroup = pygame.sprite.Group()
         self.ballGroup = pygame.sprite.Group() # Yes, I know there's only one ball
-        Ball.groups = self.ballGroup           # Sprite class uses groups a lot
-        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000)
-
-        self.engineGroup = pygame.sprite.Group()
-        Engine.groups = self.engineGroup
-        self.engine = Engine()
-
+        Ball.groups = self.ballGroup, self.allGroup           # Sprite class uses groups a lot
+        #self.engineGroup = pygame.sprite.Group()
+        #Engine.groups = self.engineGroup, self.allGroup        
         self.asteroidGroup = pygame.sprite.Group()
-        Asteroid.groups = self.asteroidGroup # Every created asteroid is a member of this group
+        Asteroid.groups = self.asteroidGroup, self.allGroup
+        
+        # Create the sprites
+        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000)
         for i in range(self.no_of_asteroids):
-            (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 100,gameRect.bottom))
-            radius = random.randrange(20,100)
+            (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
+            radius = random.randrange(20,80)
             asteroid = Asteroid((x,y),radius)
             
         # draw the landing strip
@@ -372,18 +439,29 @@ while True:
         
     
     
-    # Update the screen
-    # acceleration calculation uses that we've used pygame.event.get()
-    game.asteroidGroup.clear(screen, background)
-    game.ballGroup.clear(screen, background)
-    #game.engineGroup.clear(screen, background)
+    # UPDATE THE SCREEN
+    # First job is to rub everything out
+
+    game.ballGroup.clear(screen,background)
+    game.asteroidGroup.clear(screen,background)
+
+    for engine in Engine.engines:
+        engine.clear()
+
+    
+    # Then draw everything again
     # Draw function for asteroids will be needed when explosions go over them
+
+    for engine in Engine.engines:
+        engine.draw()
+
     game.asteroidGroup.draw(screen)
-    game.engineGroup.draw(screen)
     game.ballGroup.draw(screen)
     
+
+
+    
     game.ball.draw_shield(msecs)
-    game.engineGroup.update(game.ball)
     game.ball.update(msecs)
     text = draw_text(text)
     
