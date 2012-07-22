@@ -36,6 +36,7 @@ RED = (255, 0, 0)
 YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+GREY = (119,119,119)
 
 class Engine():
     # Just playing around here.  Find it very hard to animate anythig!
@@ -56,6 +57,8 @@ class Engine():
         self.draw()
 
     def engine_activated(self):
+        # Plan to give the ball and all missiles engine animations
+        # Doing it below be letting the engine work out what it's an engine for.
         if self.item.__class__.__name__ == 'Ball':
             try:
                 if self.item.fuel > 0 and (pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a] == True):
@@ -110,7 +113,7 @@ class Engine():
 
 class Ball(pygame.sprite.Sprite):
     radius = 20
-    def __init__(self,(x,y),fuel,shield):
+    def __init__(self,(x,y),fuel,shield,accel_magnitude):
         pygame.sprite.Sprite.__init__(self, self.groups)
         self.image = pygame.Surface((2*Ball.radius, 2*Ball.radius))
         self.image.set_colorkey(BLACK) # make the black background transparent
@@ -119,6 +122,7 @@ class Ball(pygame.sprite.Sprite):
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.angle = math.pi
+        self.accel_magnitude = accel_magnitude
 
         self.radius = Ball.radius
         self.rect.center = (x,y)    
@@ -215,7 +219,7 @@ class Ball(pygame.sprite.Sprite):
         else:
             if x > 0 and y >= 0 or x > 0 and y < 0: angle = math.atan((1.0*y)/x)
             if x < 0 and y >= 0 or x < 0 and y < 0: angle = math.atan((1.0*y)/x) + math.pi
-        (self.x_accel, self.y_accel) = (accel_magnitude * math.cos(angle),accel_magnitude * math.sin(angle))
+        (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(angle),self.accel_magnitude * math.sin(angle))
     
     def landed(self,landingStrip):
         # Know we've collided.
@@ -267,6 +271,30 @@ class Ball(pygame.sprite.Sprite):
         
         return
         
+class Ground(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        # 1 fifth of the screen up, all the way across
+        (width, height) = screen.get_size()
+        self.image = pygame.Surface((width, int(0.2 * height)))
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.rect = self.image.get_rect()
+        # This should be a filled in rectangle - the top is a series of points
+        points = []
+        x = self.rect.left
+        while x < self.rect.right:
+            y = random.randrange(self.rect.top,self.rect.bottom)
+            x = x + random.randrange(0,50)
+            if x >= self.rect.right:
+                x = self.rect.right
+            points.append((x,y))
+            if x == self.rect.right: break
+        points.extend([self.rect.bottomright, self.rect.bottomleft])
+            
+        pygame.draw.polygon(self.image, GREY, points)
+        self.image = self.image.convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
+        self.rect.bottomleft = gameRect.bottomleft
         
         
 class Game:
@@ -303,9 +331,12 @@ class Game:
         #Engine.groups = self.engineGroup, self.allGroup        
         self.asteroidGroup = pygame.sprite.Group()
         Asteroid.groups = self.asteroidGroup, self.allGroup
+        self.groundGroup = pygame.sprite.Group()
+        Ground.groups = self.groundGroup, self.allGroup
         
         # Create the sprites
-        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000)
+        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000,200)
+        self.ground = Ground()
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
             radius = random.randrange(20,80)
@@ -376,7 +407,7 @@ screen.blit(background, (0, 0))
 
 pygame.display.set_caption('Lander')
 gameRect = screen.get_rect()
-accel_magnitude = 200
+#accel_magnitude = 200
 font = pygame.font.Font(None, 36)
 text = None
 clock = pygame.time.Clock()
@@ -433,7 +464,7 @@ while True:
     
     # UPDATE THE SCREEN
     # First job is to rub everything out
-
+    game.groundGroup.clear(screen,background)
     game.ballGroup.clear(screen,background)
     game.asteroidGroup.clear(screen,background)
 
@@ -443,6 +474,7 @@ while True:
     
     # Then draw everything again
     # Draw function for asteroids will be needed when explosions go over them
+    game.groundGroup.draw(screen)
     game.asteroidGroup.draw(screen)
     for engine in Engine.engines:
         engine.draw()
