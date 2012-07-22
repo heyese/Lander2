@@ -33,6 +33,7 @@ pygame.init()
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
+YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
@@ -41,6 +42,9 @@ class Engine():
     # Rotation doesn't work as I hoped it would - things go all squiffy
     # I want a way to animate engine flames coming out of the ball, basically.
     # In fact, ball.rect.center just doesn't seem to be the center of the ball!  Confused.
+    
+    # Engine object should be instantiated by the item it is an engine for
+    # That item should have an .angle attribute, being the angle of engine force
     
     engines = []
     def __init__(self,item):
@@ -51,12 +55,28 @@ class Engine():
         self.image_copy.fill(BLACK)
         self.draw()
 
+    def engine_activated(self):
+        if self.item.__class__.__name__ == 'Ball':
+            try:
+                if pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a] == True:
+                    return True
+                else:
+                    return False
+            except:
+                return False
+        else:
+            return True
+            
     def draw(self):
+        
         self.image = self.image_copy.copy()
         self.rect = self.image.get_rect()
         self.image.set_colorkey(BLACK) # make the black background transparent
         
-        print self.item.angle * 180.0 / math.pi
+        # Missiles will always be accelerating (unless they're out of fuel? ...)
+        # With the ball, we only want animation if we're accelerating
+        if self.engine_activated() == False:
+           return
         #print "Line coordinates are: (%s,%s) - (%s,%s)" % (self.rect.center[0],self.rect.center[1],int(self.rect.centerx + length * math.cos(self.item.angle)),int(self.rect.centery + length * math.sin(self.item.angle)))
         #pygame.draw.line(self.image, WHITE, self.rect.center, (int(self.rect.centerx + length * math.cos(self.item.angle)),int(self.rect.centery + length * math.sin(self.item.angle))))
         # Calculating points ...
@@ -67,11 +87,15 @@ class Engine():
         vector1 = (-0.5 * self.item.radius * math.cos(self.item.angle),0.5 * self.item.radius * math.sin(self.item.angle))
         
         #Vectors to base corners of triangle
-        p1 = (int(base_of_triangle[0] + 0.5*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] + 0.5*self.item.radius*unit_perp_vector[1]))
-        p2 = (int(base_of_triangle[0] - 0.5*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] - 0.5*self.item.radius*unit_perp_vector[1]))
-        p3 = (int(self.rect.centerx - 2.5 * self.item.radius * math.cos(self.item.angle)),int(self.rect.centery - 2.5 * self.item.radius * math.sin(self.item.angle)))
         
-        pygame.draw.polygon(self.image, RED, [p1, p2, p3] )
+        width_factor = random.random()/2.0 + 0.5
+        height_factor = random.random() + 1.5
+        colour_factor = random.randrange(0,256)
+        p1 = (int(base_of_triangle[0] + width_factor*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] + width_factor*self.item.radius*unit_perp_vector[1]))
+        p2 = (int(base_of_triangle[0] - width_factor*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] - width_factor*self.item.radius*unit_perp_vector[1]))
+        p3 = (int(self.rect.centerx - height_factor * self.item.radius * math.cos(self.item.angle)),int(self.rect.centery - height_factor * self.item.radius * math.sin(self.item.angle)))
+        colour = (255, colour_factor, 0)
+        pygame.draw.polygon(self.image, colour, [p1, p2, p3] )
 
         self.image.set_alpha(100)
         self.image = self.image.convert_alpha()
@@ -150,8 +174,6 @@ class Ball(pygame.sprite.Sprite):
         self.update_accel()
         self.update_shield()
         
-
-        
     def draw_shield(self,msecs):
         if self.shield_active == True:
             if self.shield_timer == None:
@@ -164,42 +186,7 @@ class Ball(pygame.sprite.Sprite):
                 self.shield_timer += msecs
                 if self.shield_timer > 150: self.shield_timer = None
     
-    def erase_engine(self):
-        try:
-            self.engine_image.fill(BLACK)
-            #self.engine_image.set_colorkey(BLACK) # make the black background 
-            self.engine_image = self.engine_image.convert_alpha()
-            screen.blit(self.engine_image,self.engine_rect)
-        except:
-            pass
-        return
 
-
-    def draw_engine(self):
-        # if acceleration key is pressed, draw triangles of different
-        # sizes and light colours at appropriate angle to be engine flames.
-        
-            
-        '''
-                (x,y) = (mouse_x - self.rect.centerx,mouse_y - self.rect.centery)
-        if x == 0:
-            if y == 0:
-                return (0,0)  # Click on dead center of ball, no force / acceleration applied
-            if y > 0: angle = math.pi / 2
-            if y < 0: angle = (3.0/2) * math.pi
-        else:
-            if x > 0 and y >= 0 or x > 0 and y < 0: angle = math.atan((1.0*y)/x)
-            if x < 0 and y >= 0 or x < 0 and y < 0: angle = math.atan((1.0*y)/x) + math.pi
-        (self.x_accel, self.y_accel) = (accel_magnitude * math.cos(angle),accel_magnitude * math.sin(angle))
-        '''
-        self.engine_image = pygame.Surface((3*Ball.radius, 3*Ball.radius))
-        self.engine_image.set_colorkey(BLACK) # make the black background transparent
-        self.engine_rect = self.engine_image.get_rect()
-        pygame.draw.line(self.engine_image, GREEN, self.engine_rect.center, self.engine_rect.midbottom)
-        self.engine_image = self.engine_image.convert_alpha()
-        self.engine_rect.center = self.rect.center
-        screen.blit(self.engine_image,self.engine_rect)
-    
     def update_shield(self):
         if (pygame.mouse.get_pressed()[2] == True or game.keystate[var.K_s]) and self.shield > 0:
             self.shield -= 1
@@ -451,16 +438,13 @@ while True:
     
     # Then draw everything again
     # Draw function for asteroids will be needed when explosions go over them
-
+    game.asteroidGroup.draw(screen)
     for engine in Engine.engines:
         engine.draw()
-
-    game.asteroidGroup.draw(screen)
     game.ballGroup.draw(screen)
     
 
 
-    
     game.ball.draw_shield(msecs)
     game.ball.update(msecs)
     text = draw_text(text)
