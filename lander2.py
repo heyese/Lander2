@@ -279,6 +279,7 @@ class Ground(pygame.sprite.Sprite):
         self.image = pygame.Surface((width, int(0.2 * height)))
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
+
         # This should be a filled in rectangle - the top is a series of points
         points = []
         x = self.rect.left
@@ -327,24 +328,24 @@ class Game:
         self.allGroup = pygame.sprite.Group()
         self.ballGroup = pygame.sprite.Group() # Yes, I know there's only one ball
         Ball.groups = self.ballGroup, self.allGroup           # Sprite class uses groups a lot
-        #self.engineGroup = pygame.sprite.Group()
+        #self.engineGroup = pygame.sprite.Group()      # Not managed to get engines working using sprites.
         #Engine.groups = self.engineGroup, self.allGroup        
         self.asteroidGroup = pygame.sprite.Group()
         Asteroid.groups = self.asteroidGroup, self.allGroup
         self.groundGroup = pygame.sprite.Group()
         Ground.groups = self.groundGroup, self.allGroup
+        self.landingStripGroup = pygame.sprite.Group()
+        LandingStrip.groups = self.landingStripGroup, self.allGroup
         
         # Create the sprites
         self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000,200)
         self.ground = Ground()
+        self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
             radius = random.randrange(20,80)
             asteroid = Asteroid((x,y),radius)
-            
-        # draw the landing strip
-        self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
-        
+                    
     def level_animation(self):
         pass    
     
@@ -371,9 +372,17 @@ class Asteroid(pygame.sprite.Sprite):
 
 #############################################################################################
 
-class LandingStrip:
+class LandingStrip(pygame.sprite.Sprite):
     def __init__(self,(x,y),length):
-        self.rect = pygame.draw.rect(screen, BLUE, (x,y,length,10))
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.image = pygame.Surface((length, 10))
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.rect = self.image.get_rect()
+        pygame.draw.rect(self.image, BLUE, (0,0,length,10))
+        self.image = self.image.convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
+        self.rect.topleft = (x,y)
+        
 
 
 def draw_text(text):
@@ -436,13 +445,14 @@ while True:
     index = game.ball.rect.collidelist(game.asteroids)
     # First we do a quick cheap check to see if anything might be colliding ...
     asteroid_collisions = pygame.sprite.spritecollide(game.ball,game.asteroidGroup,False)
-    for asteroid in asteroid_collisions:
+    ground_collisions = pygame.sprite.spritecollide(game.ball,game.groundGroup,False)
+    for item in asteroid_collisions + ground_collisions:
         # Now we accurately check out those possible collisions
-        if pygame.sprite.collide_mask(game.ball,asteroid):
+        if pygame.sprite.collide_mask(game.ball,item):
             # Below is the coordinate in the ball mask where the overlap has hit
             # Want to use this to calculate collisions rather than the centre of the asteroid,
             # as I'll then be able to use the same technique for collision with any shapes.
-            (x,y) = game.ball.mask.overlap(asteroid.mask, (asteroid.rect.topleft[0] - game.ball.rect.topleft[0],asteroid.rect.topleft[1] - game.ball.rect.topleft[1]))
+            (x,y) = game.ball.mask.overlap(item.mask, (item.rect.topleft[0] - game.ball.rect.topleft[0],item.rect.topleft[1] - game.ball.rect.topleft[1]))
             if game.ball.shield_active == False:
                 game.it_is_game_over()
             else:
@@ -467,6 +477,7 @@ while True:
     game.groundGroup.clear(screen,background)
     game.ballGroup.clear(screen,background)
     game.asteroidGroup.clear(screen,background)
+    game.landingStripGroup.clear(screen,background)
 
     for engine in Engine.engines:
         engine.clear()
@@ -476,6 +487,7 @@ while True:
     # Draw function for asteroids will be needed when explosions go over them
     game.groundGroup.draw(screen)
     game.asteroidGroup.draw(screen)
+    game.landingStripGroup.draw(screen)
     for engine in Engine.engines:
         engine.draw()
     game.ballGroup.draw(screen)
