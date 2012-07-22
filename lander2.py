@@ -50,7 +50,7 @@ class Engine():
     def __init__(self,item):
         Engine.engines.append(self) # add this instance to the class list
         self.item = item # this could be the ship, a missile or whatever
-        self.image = pygame.Surface((5*item.radius, 5*item.radius))
+        self.image = pygame.Surface((6*item.radius, 6*item.radius))
         self.image_copy = self.image.copy()
         self.image_copy.fill(BLACK)
         self.draw()
@@ -58,7 +58,7 @@ class Engine():
     def engine_activated(self):
         if self.item.__class__.__name__ == 'Ball':
             try:
-                if pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a] == True:
+                if self.item.fuel > 0 and (pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a] == True):
                     return True
                 else:
                     return False
@@ -77,8 +77,6 @@ class Engine():
         # With the ball, we only want animation if we're accelerating
         if self.engine_activated() == False:
            return
-        #print "Line coordinates are: (%s,%s) - (%s,%s)" % (self.rect.center[0],self.rect.center[1],int(self.rect.centerx + length * math.cos(self.item.angle)),int(self.rect.centery + length * math.sin(self.item.angle)))
-        #pygame.draw.line(self.image, WHITE, self.rect.center, (int(self.rect.centerx + length * math.cos(self.item.angle)),int(self.rect.centery + length * math.sin(self.item.angle))))
         # Calculating points ...
         base_of_triangle = (self.rect.centerx - 0.5 * self.item.radius * math.cos(self.item.angle),self.rect.centery - 0.5 * self.item.radius * math.sin(self.item.angle))
         unit_perp_vector = (math.sin(self.item.angle), -math.cos(self.item.angle))
@@ -89,7 +87,7 @@ class Engine():
         #Vectors to base corners of triangle
         
         width_factor = random.random()/2.0 + 0.5
-        height_factor = random.random() + 1.5
+        height_factor = 2*random.random() + 1.5
         colour_factor = random.randrange(0,256)
         p1 = (int(base_of_triangle[0] + width_factor*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] + width_factor*self.item.radius*unit_perp_vector[1]))
         p2 = (int(base_of_triangle[0] - width_factor*self.item.radius*unit_perp_vector[0]),int(base_of_triangle[1] - width_factor*self.item.radius*unit_perp_vector[1]))
@@ -97,7 +95,8 @@ class Engine():
         colour = (255, colour_factor, 0)
         pygame.draw.polygon(self.image, colour, [p1, p2, p3] )
 
-        self.image.set_alpha(100)
+        
+        self.image.set_alpha(200) # How transparent do we want it?  0 = transparent, 255 = solid.
         self.image = self.image.convert_alpha()
         self.rect.center = self.item.rect.center
         screen.blit(self.image,self.rect)
@@ -228,13 +227,13 @@ class Ball(pygame.sprite.Sprite):
             return False
         return True
             
-    def shielded_asteroid_collision(self,object):
+    def shielded_fixed_collision(self,(mask_x,mask_y)):
         # This is the function called when we hit an object that is fixed
         # - ie. an asteroid, the landing pad or the ground - and need to bounce
-        # off it
+        # off it.  (x,y) are the coordinates of the ball mask at which point the collision is.
         self.shield_timer = 0 # Want shield to flash for a visible length of time on impact
         (Bx,By) = (self.rect.centerx,self.rect.centery) # Centre of ball
-        (Ax,Ay) = (object.rect.centerx,object.rect.centery) # Centre of asteroid
+        (Ax,Ay) = (self.rect.topleft[0] + mask_x,self.rect.topleft[1] + mask_y)
         # (Ax-Bx,Ay-By) - vector from ball centre to asteroid centre 
         mod = math.sqrt((Ax-Bx)**2 + (Ay-By)**2)
         e2 = ((1.0/mod)*(Ax-Bx),(1.0/mod)*(Ay-By)) # unit vector from ball to asteroid
@@ -294,6 +293,8 @@ class Game:
         self.level_animation()
         screen.fill(BLACK)
         
+        # Clear last levels engines
+        Engine.engines = []
         # Set up the sprite groups
         self.allGroup = pygame.sprite.Group()
         self.ballGroup = pygame.sprite.Group() # Yes, I know there's only one ball
@@ -407,11 +408,15 @@ while True:
     for asteroid in asteroid_collisions:
         # Now we accurately check out those possible collisions
         if pygame.sprite.collide_mask(game.ball,asteroid):
+            # Below is the coordinate in the ball mask where the overlap has hit
+            # Want to use this to calculate collisions rather than the centre of the asteroid,
+            # as I'll then be able to use the same technique for collision with any shapes.
+            (x,y) = game.ball.mask.overlap(asteroid.mask, (asteroid.rect.topleft[0] - game.ball.rect.topleft[0],asteroid.rect.topleft[1] - game.ball.rect.topleft[1]))
             if game.ball.shield_active == False:
                 game.it_is_game_over()
             else:
                 # We are colliding with an asteroid, but our amazing shield saves us!
-                game.ball.shielded_asteroid_collision(asteroid)
+                game.ball.shielded_fixed_collision((x,y))
     
 
     # Check landing pad collision
