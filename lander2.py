@@ -109,7 +109,7 @@ class Engine():
         # over the image.  Not sure how to do it just nowm so I'll use a square of black.
         screen.blit(self.image_copy,self.rect)
         # If the item is no longer alive, it should no longer have an engine
-        if self.item.alive == False:
+        if self.item not in game.allGroup:
             Engine.engines.remove(self)
         
 
@@ -137,7 +137,6 @@ class Ball(pygame.sprite.Sprite):
         self.shield_active = False
         self.shield_colour = BLUE
         self.shield_timer = None
-        self.alive == True
         self.engine = Engine(self)
         
 
