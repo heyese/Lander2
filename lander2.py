@@ -108,6 +108,9 @@ class Engine():
         # Here I want to trim the background down to size and blit that
         # over the image.  Not sure how to do it just nowm so I'll use a square of black.
         screen.blit(self.image_copy,self.rect)
+        # If the item is no longer alive, it should no longer have an engine
+        if self.item.alive == False:
+            Engine.engines.remove(self)
         
 
 
@@ -134,7 +137,9 @@ class Ball(pygame.sprite.Sprite):
         self.shield_active = False
         self.shield_colour = BLUE
         self.shield_timer = None
+        self.alive == True
         self.engine = Engine(self)
+        
 
     def update_pos(self,msecs):
         x = self.x + self.x_vel * msecs / 1000.0 + 0.5 * self.x_accel * (msecs / 1000.0) ** 2
@@ -368,13 +373,13 @@ class Game:
     
     def it_is_game_over(self):
         self.game_over = True
-        # Remove the ball engine
-        Engine.engines.remove(self.ball.engine)
-        # Create an explosion for the ball
-        Explosion(game.ball,3*game.ball.radius)
+        print "Game over"
         
-        # play blow up animation!
-        #sys.exit()
+        # Create an explosion for the ball
+        Explosion(game.ball.rect.center,game.ball.radius,3*game.ball.radius)
+        # Set the alive flag to false (its engine is removed)
+        game.ball.alive = False
+
 
 # the asteroid class!
 class Asteroid(pygame.sprite.Sprite):
@@ -392,15 +397,16 @@ class Asteroid(pygame.sprite.Sprite):
 
 class Explosion():
     explosions = []
-    def __init__(self,item,radius):    
+    def __init__(self,(x,y),initial_radius, final_radius):    
         Explosion.explosions.append(self)
-        self.radius = radius
-        self.item = item
-        self.image = pygame.Surface((2*radius, 2*radius))
+        self.image = pygame.Surface((2*final_radius, 2*final_radius))
         self.image_copy = self.image.copy()
         self.image_copy.fill(BLACK)
 
-        self.current_radius = self.item.radius
+        self.initial_radius = initial_radius
+        self.final_radius = final_radius
+        self.current_radius = self.initial_radius
+        (self.x,self.y) = (x,y)
         self.timer = 0
         self.draw_time = 0
         self.draw()
@@ -423,7 +429,7 @@ class Explosion():
         self.image.set_alpha(230)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
-        self.rect.center = (self.item.x,self.item.y)
+        self.rect.center = (self.x,self.y)
         screen.blit(self.image,self.rect)
 
 		
@@ -439,7 +445,7 @@ class Explosion():
             self.current_radius += 1
             self.draw_time = self.timer
 
-        if self.current_radius >= self.radius:
+        if self.current_radius >= self.final_radius:
             # Explosion has reached maximum size - get rid of it
             self.clear()
             Explosion.explosions.remove(self)
