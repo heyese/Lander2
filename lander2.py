@@ -579,12 +579,9 @@ while True:
     # Update everything that needs updating
     for explosion in Explosion.explosions:
         explosion.update(msecs)
-
     game.ballGroup.update(msecs)
-    if game.game_over == False:
-        game.text.update()
-        #game.ball.draw_shield(msecs)
-        #game.ball.update(msecs)
+    game.textGroup.update()
+
     
     # draw the window onto the screen
     pygame.display.update()  
