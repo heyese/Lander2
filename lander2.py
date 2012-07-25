@@ -573,7 +573,7 @@ while True:
     game.landingStripGroup.draw(screen)
     for engine in Engine.engines:
         engine.draw()
-    if game.game_over == False: game.ballGroup.draw(screen)
+    game.ballGroup.draw(screen)
     
     # Update everything that needs updating
     for explosion in Explosion.explosions:
