@@ -368,6 +368,9 @@ class Game:
     
     def it_is_game_over(self):
         self.game_over = True
+        # Remove the ball engine
+        Engine.engines.remove(self.ball.engine)
+        # Create an explosion for the ball
         Explosion(game.ball,3*game.ball.radius)
         
         # play blow up animation!
@@ -397,8 +400,9 @@ class Explosion():
         self.image_copy = self.image.copy()
         self.image_copy.fill(BLACK)
 
-        self.current_radius = 1
+        self.current_radius = self.item.radius
         self.timer = 0
+        self.draw_time = 0
         self.draw()
         
         
@@ -411,7 +415,7 @@ class Explosion():
         self.rect = self.image.get_rect()
         
        
-        
+
         for temp_radius in range(self.current_radius,1,-5):
             colour_factor = random.randrange(0,256)
             colour = (255, colour_factor, 0) 
@@ -430,10 +434,14 @@ class Explosion():
     
     def update(self,msecs):
         self.timer += msecs
-        self.current_radius += 1
+        # The line below slows the explosion down a bit
+        if self.timer > self.draw_time + 10:   
+            self.current_radius += 1
+            self.draw_time = self.timer
+
         if self.current_radius >= self.radius:
+            # Explosion has reached maximum size - get rid of it
             self.clear()
-            # Explosion has reached maximum size
             Explosion.explosions.remove(self)
 
 
@@ -563,7 +571,7 @@ while True:
     if game.game_over == False:
         game.text.update()
         game.ball.draw_shield(msecs)
-    game.ball.update(msecs)
+        game.ball.update(msecs)
     
     # draw the window onto the screen
     pygame.display.update()  
