@@ -177,10 +177,13 @@ class Ball(pygame.sprite.Sprite):
     
     def update(self,msecs):
         self.update_mouse_angle_to_ball()
+        self.update_shield()
+        self.draw_shield(msecs)
         self.update_vel(msecs)
         self.update_pos(msecs)
         self.update_accel()
-        self.update_shield()
+
+        
         
     def draw_shield(self,msecs):
         if self.shield_active == True:
@@ -379,6 +382,8 @@ class Game:
         Explosion(game.ball.rect.center,game.ball.radius,3*game.ball.radius)
         # Set the alive flag to false (its engine is removed)
         game.ball.alive = False
+        # Remove the sprite from any groups it's a member of
+        game.ball.kill()
 
 
 # the asteroid class!
@@ -526,7 +531,7 @@ while True:
 
 
     # COLLISIONS        
-    # First we do a quick cheap check to see if anything might be colliding ...
+    # First we do a quick cheap check to see if anything might be colliding with the ball ...
     asteroid_collisions = pygame.sprite.spritecollide(game.ball,game.asteroidGroup,False)
     ground_collisions = pygame.sprite.spritecollide(game.ball,game.groundGroup,False)
     landingStrip_collisions = pygame.sprite.spritecollide(game.ball,game.landingStripGroup,False)
@@ -538,7 +543,7 @@ while True:
             if game.ball.shield_active == False and game.ball.landed(game.landingStrip) == False and game.game_over == False:
                 # We have no shield up and we've not landed ...
                 game.it_is_game_over()
-            elif game.ball.landed(game.landingStrip) == True and game.game_over == False:
+            elif game.ball.landed(game.landingStrip) == True:
                 print "You've landed!"
                 game.next_level()
             else:
@@ -573,11 +578,13 @@ while True:
     
     # Update everything that needs updating
     for explosion in Explosion.explosions:
-        explosion.update(msecs)      
+        explosion.update(msecs)
+
+    game.ballGroup.update(msecs)
     if game.game_over == False:
         game.text.update()
-        game.ball.draw_shield(msecs)
-        game.ball.update(msecs)
+        #game.ball.draw_shield(msecs)
+        #game.ball.update(msecs)
     
     # draw the window onto the screen
     pygame.display.update()  
