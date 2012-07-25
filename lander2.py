@@ -231,7 +231,7 @@ class Ball(pygame.sprite.Sprite):
             return False
         return True
             
-    def shielded_fixed_collision(self,(mask_x,mask_y)):
+    def fixed_collision(self,(mask_x,mask_y)):
         # This is the function called when we hit an object that is fixed
         # - ie. an asteroid, the landing pad or the ground - and need to bounce
         # off it.  (x,y) are the coordinates of the ball mask at which point the collision is.
@@ -272,13 +272,18 @@ class Ball(pygame.sprite.Sprite):
         return
         
 class Ground(pygame.sprite.Sprite):
-    def __init__(self):
+    def __init__(self, landingStrip):
         pygame.sprite.Sprite.__init__(self, self.groups)
         # 1 fifth of the screen up, all the way across
         (width, height) = screen.get_size()
         self.image = pygame.Surface((width, int(0.2 * height)))
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
+        self.landingStrip = landingStrip
+        
+        # landStrip coordinates as imposed on ground rectangle
+        (ls_x1,ls_y1) = (self.landingStrip.rect.bottomleft[0],int(self.landingStrip.rect.bottomleft[1] - 0.8 * height))
+        (ls_x2,ls_y2) = (self.landingStrip.rect.bottomright[0], int(self.landingStrip.rect.bottomright[1] - 0.8 * height))
 
         # This should be a filled in rectangle - the top is a series of points
         points = []
@@ -288,6 +293,10 @@ class Ground(pygame.sprite.Sprite):
             x = x + random.randrange(0,50)
             if x >= self.rect.right:
                 x = self.rect.right
+            if x >= ls_x1 and (ls_x1,ls_y1) not in points:
+                points.extend([(ls_x1,ls_y1),(ls_x2,ls_y2)])
+                x = ls_x2
+                continue
             points.append((x,y))
             if x == self.rect.right: break
         points.extend([self.rect.bottomright, self.rect.bottomleft])
@@ -296,6 +305,8 @@ class Ground(pygame.sprite.Sprite):
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.bottomleft = gameRect.bottomleft
+
+        
         
         
 class Game:
@@ -326,7 +337,7 @@ class Game:
         Engine.engines = []
         # Set up the sprite groups
         self.allGroup = pygame.sprite.Group()
-        self.ballGroup = pygame.sprite.Group() # Yes, I know there's only one ball
+        self.ballGroup = pygame.sprite.Group()
         Ball.groups = self.ballGroup, self.allGroup           # Sprite class uses groups a lot
         #self.engineGroup = pygame.sprite.Group()      # Not managed to get engines working using sprites.
         #Engine.groups = self.engineGroup, self.allGroup        
@@ -336,24 +347,31 @@ class Game:
         Ground.groups = self.groundGroup, self.allGroup
         self.landingStripGroup = pygame.sprite.Group()
         LandingStrip.groups = self.landingStripGroup, self.allGroup
+        self.textGroup = pygame.sprite.Group()
+        Text.groups = self.textGroup, self.allGroup
+        self.explosionGroup = pygame.sprite.Group()
+        Explosion.groups = self.explosionGroup, self.allGroup
         
         # Create the sprites
+        self.text = Text()
         self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000,200)
-        self.ground = Ground()
-        self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
+        self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right - 100),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
+
+        self.ground = Ground(self.landingStrip)
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
             radius = random.randrange(20,80)
             asteroid = Asteroid((x,y),radius)
                     
     def level_animation(self):
-        pass    
+        pass
     
     def it_is_game_over(self):
         self.game_over = True
+        Explosion(game.ball,3*game.ball.radius)
+        
         # play blow up animation!
-        print "Game Over"
-        sys.exit()
+        #sys.exit()
 
 # the asteroid class!
 class Asteroid(pygame.sprite.Sprite):
@@ -368,9 +386,81 @@ class Asteroid(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.radius = radius
         self.rect.center = (x,y)
+
+class Explosion():
+    explosions = []
+    def __init__(self,item,radius):    
+        Explosion.explosions.append(self)
+        self.radius = radius
+        self.item = item
+        self.image = pygame.Surface((2*radius, 2*radius))
+        self.image_copy = self.image.copy()
+        self.image_copy.fill(BLACK)
+
+        self.current_radius = 1
+        self.timer = 0
+        self.draw()
+        
+        
+
+    def draw(self):
+
+        self.image = self.image_copy.copy()
+        self.rect = self.image.get_rect()
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.rect = self.image.get_rect()
+        
+       
+        
+        for temp_radius in range(self.current_radius,1,-5):
+            colour_factor = random.randrange(0,256)
+            colour = (255, colour_factor, 0) 
+            pygame.draw.circle(self.image, colour, self.rect.center, temp_radius)
+        self.image.set_alpha(230)
+        self.image = self.image.convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
+        self.rect.center = (self.item.x,self.item.y)
+        screen.blit(self.image,self.rect)
+
+		
+        
+    def clear(self):
+        screen.blit(self.image_copy,self.rect)
+
+    
+    def update(self,msecs):
+        self.timer += msecs
+        self.current_radius += 1
+        if self.current_radius >= self.radius:
+            self.clear()
+            # Explosion has reached maximum size
+            Explosion.explosions.remove(self)
+
+
+        
         
 
 #############################################################################################
+
+class Text(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        text_string = ''
+        self.image = font.render(text_string, 0, WHITE, BLACK)
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.rect = self.image.get_rect()
+        
+    def update(self):
+        # Draw new text.  Important to make sure the text isn't transparent so we can clear it
+        fuel = "Fuel (%d)" % game.ball.fuel
+        shield = "Shield (%d)" % game.ball.shield
+        #position = "Position (%d,%d)" % (game.ball.rect.centerx,game.ball.rect.centery)
+        velocity = "Velocity (%0.1f, %0.1f)" % (game.ball.x_vel,game.ball.y_vel)
+        speed = "Speed (%0.1f)" % (math.sqrt(game.ball.x_vel ** 2 + game.ball.y_vel ** 2))
+        #acceleration = "Acceleration (%0.1f, %0.1f)" % (game.ball.x_accel,game.ball.y_accel)
+        fps = "FPS: %0.1f" % clock.get_fps()
+        text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20)
+        self.image = font.render(text_string, 0, WHITE, BLACK)
 
 class LandingStrip(pygame.sprite.Sprite):
     def __init__(self,(x,y),length):
@@ -385,24 +475,6 @@ class LandingStrip(pygame.sprite.Sprite):
         
 
 
-def draw_text(text):
-    # Clear the old line of text
-    try:
-        text.fill(BLACK)
-        screen.blit(text, (0,0))
-    except: pass
-    # Draw new text.  Important to make sure the text isn't transparent so we can clear it
-    fuel = "Fuel (%d)" % game.ball.fuel
-    shield = "Shield (%d)" % game.ball.shield
-    #position = "Position (%d,%d)" % (game.ball.rect.centerx,game.ball.rect.centery)
-    velocity = "Velocity (%0.1f, %0.1f)" % (game.ball.x_vel,game.ball.y_vel)
-    speed = "Speed (%0.1f)" % (math.sqrt(game.ball.x_vel ** 2 + game.ball.y_vel ** 2))
-    #acceleration = "Acceleration (%0.1f, %0.1f)" % (game.ball.x_accel,game.ball.y_accel)
-    fps = "FPS: %0.1f" % clock.get_fps()
-    text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20)
-    text = font.render(text_string, 0, WHITE, BLACK)
-    screen.blit(text, (0,0))
-    return text
 
 #############################################################################################
 
@@ -440,63 +512,58 @@ while True:
 
 
     # COLLISIONS        
-    # Check for collisions with asteroids
-    # There are ways to improve the collision detection - this one isn't great
-    index = game.ball.rect.collidelist(game.asteroids)
     # First we do a quick cheap check to see if anything might be colliding ...
     asteroid_collisions = pygame.sprite.spritecollide(game.ball,game.asteroidGroup,False)
     ground_collisions = pygame.sprite.spritecollide(game.ball,game.groundGroup,False)
-    for item in asteroid_collisions + ground_collisions:
+    landingStrip_collisions = pygame.sprite.spritecollide(game.ball,game.landingStripGroup,False)
+    for item in asteroid_collisions + ground_collisions + landingStrip_collisions:
         # Now we accurately check out those possible collisions
         if pygame.sprite.collide_mask(game.ball,item):
             # Below is the coordinate in the ball mask where the overlap has hit
-            # Want to use this to calculate collisions rather than the centre of the asteroid,
-            # as I'll then be able to use the same technique for collision with any shapes.
             (x,y) = game.ball.mask.overlap(item.mask, (item.rect.topleft[0] - game.ball.rect.topleft[0],item.rect.topleft[1] - game.ball.rect.topleft[1]))
-            if game.ball.shield_active == False:
+            if game.ball.shield_active == False and game.ball.landed(game.landingStrip) == False and game.game_over == False:
+                # We have no shield up and we've not landed ...
                 game.it_is_game_over()
+            elif game.ball.landed(game.landingStrip) == True and game.game_over == False:
+                print "You've landed!"
+                game.next_level()
             else:
-                # We are colliding with an asteroid, but our amazing shield saves us!
-                game.ball.shielded_fixed_collision((x,y))
-    
-
-    # Check landing pad collision
-    if game.ball.rect.colliderect(game.landingStrip):
-        # We've either landed or we've crashed!
-        if game.ball.landed(game.landingStrip) == True:
-            print "You've landed!"
-            game.next_level()
-        else:
-            game.it_is_game_over()
+                # We are colliding with something solid!
+                game.ball.fixed_collision((x,y))
 
         
-    
-    
     # UPDATE THE SCREEN
     # First job is to rub everything out
+    for explosion in Explosion.explosions:
+        explosion.clear()
+    game.textGroup.clear(screen,background)
     game.groundGroup.clear(screen,background)
     game.ballGroup.clear(screen,background)
     game.asteroidGroup.clear(screen,background)
     game.landingStripGroup.clear(screen,background)
-
     for engine in Engine.engines:
         engine.clear()
 
     
     # Then draw everything again
     # Draw function for asteroids will be needed when explosions go over them
+    for explosion in Explosion.explosions:
+        explosion.draw()    
+    game.textGroup.draw(screen)
     game.groundGroup.draw(screen)
     game.asteroidGroup.draw(screen)
     game.landingStripGroup.draw(screen)
     for engine in Engine.engines:
         engine.draw()
-    game.ballGroup.draw(screen)
+    if game.game_over == False: game.ballGroup.draw(screen)
     
-
-
-    game.ball.draw_shield(msecs)
+    # Update everything that needs updating
+    for explosion in Explosion.explosions:
+        explosion.update(msecs)      
+    if game.game_over == False:
+        game.text.update()
+        game.ball.draw_shield(msecs)
     game.ball.update(msecs)
-    text = draw_text(text)
     
     # draw the window onto the screen
     pygame.display.update()  
