@@ -37,6 +37,7 @@ YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 GREY = (119,119,119)
+PINK = (255,200,200)
 
 class Engine():
     # Just playing around here.  Find it very hard to animate anythig!
@@ -62,6 +63,14 @@ class Engine():
         if self.item.__class__.__name__ == 'Ball':
             try:
                 if self.item.fuel > 0 and (pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a] == True):
+                    return True
+                else:
+                    return False
+            except:
+                return False
+        elif self.item.__class__.__name__ == 'Missile':
+            try:
+                if self.item.fuel > 0:
                     return True
                 else:
                     return False
@@ -112,22 +121,22 @@ class Engine():
         if self.item not in game.allGroup:
             Engine.engines.remove(self)
         
-
-
+    
+        
+        
 class Ball(pygame.sprite.Sprite):
-    radius = 20
-    def __init__(self,(x,y),fuel,shield,accel_magnitude):
+    def __init__(self,(x,y),fuel,shield,accel_magnitude,radius,colour):
         pygame.sprite.Sprite.__init__(self, self.groups)
-        self.image = pygame.Surface((2*Ball.radius, 2*Ball.radius))
+        self.image = pygame.Surface((2*radius, 2*radius))
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
-        pygame.draw.circle(self.image, WHITE, self.rect.center, Ball.radius)
+        pygame.draw.circle(self.image, colour, self.rect.center, radius)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.angle = math.pi
         self.accel_magnitude = accel_magnitude
 
-        self.radius = Ball.radius
+        self.radius = radius
         self.rect.center = (x,y)    
         (self.x_vel,self.y_vel) = (0,0) # vel is pixels per second    
         (self.x,self.y) = (x,y)    
@@ -187,11 +196,11 @@ class Ball(pygame.sprite.Sprite):
     def draw_shield(self,msecs):
         if self.shield_active == True:
             if self.shield_timer == None:
-                pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), Ball.radius, 5)
+                pygame.draw.circle(screen, self.shield_colour, (self.rect.centerx,self.rect.centery), self.radius, 5)
             else:
                 # We have just collided with something and want shield to flash for visible length of time
                 temp_shield_colour = (random.randint(0,255),random.randint(0,255),random.randint(0,255))
-                pygame.draw.circle(screen, temp_shield_colour, (self.rect.centerx,self.rect.centery), Ball.radius,8)
+                pygame.draw.circle(screen, temp_shield_colour, (self.rect.centerx,self.rect.centery), self.radius,8)
                 
                 self.shield_timer += msecs
                 if self.shield_timer > 150: self.shield_timer = None
@@ -206,7 +215,6 @@ class Ball(pygame.sprite.Sprite):
        
     def update_accel(self):
         if pygame.mouse.get_pressed()[0] == True or game.keystate[var.K_a]:
-            (mouse_x,mouse_y) = pygame.mouse.get_pos()
             self.fuel -= 1
             if self.fuel <= 0:
                 self.fuel = 0
@@ -217,16 +225,7 @@ class Ball(pygame.sprite.Sprite):
             # There is no acceleration when the mouse button or 's' isn't being pressed
             (self.x_accel, self.y_accel) = (0,0)
             return
-        (x,y) = (mouse_x - self.rect.centerx,mouse_y - self.rect.centery)
-        if x == 0:
-            if y == 0:
-                return (0,0)  # Click on dead center of ball, no force / acceleration applied
-            if y > 0: angle = math.pi / 2
-            if y < 0: angle = (3.0/2) * math.pi
-        else:
-            if x > 0 and y >= 0 or x > 0 and y < 0: angle = math.atan((1.0*y)/x)
-            if x < 0 and y >= 0 or x < 0 and y < 0: angle = math.atan((1.0*y)/x) + math.pi
-        (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(angle),self.accel_magnitude * math.sin(angle))
+        (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
     
     def landed(self,landingStrip):
         # Know we've collided.
@@ -277,6 +276,37 @@ class Ball(pygame.sprite.Sprite):
         
         
         return
+
+class Missile(Ball):
+    
+    def update(self,msecs):
+        self.update_ball_angle_to_missile()
+        self.update_shield()
+        self.draw_shield(msecs)
+        self.update_vel(msecs)
+        self.update_pos(msecs)
+        self.update_accel()        
+
+
+    def update_ball_angle_to_missile(self):
+        (x,y) = (game.ball.x - self.rect.centerx,game.ball.y - self.rect.centery)
+        if x == 0:
+            #if y == 0:
+            #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
+            if y > 0: self.angle = math.pi / 2
+            if y < 0: self.angle = (3.0/2) * math.pi
+        else:
+            if x > 0 and y >= 0 or x > 0 and y < 0: self.angle = math.atan((1.0*y)/x)
+            if x < 0 and y >= 0 or x < 0 and y < 0: self.angle = math.atan((1.0*y)/x) + math.pi
+            
+    def update_accel(self):
+        self.fuel -= 1
+        if self.fuel <= 0:
+            self.fuel = 0
+            # Ran out of fuel ... no more acceleration
+            (self.x_accel, self.y_accel) = (0,0)
+            return                
+        (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
         
 class Ground(pygame.sprite.Sprite):
     def __init__(self, landingStrip):
@@ -308,7 +338,7 @@ class Ground(pygame.sprite.Sprite):
             if x == self.rect.right: break
         points.extend([self.rect.bottomright, self.rect.bottomleft])
             
-        pygame.draw.polygon(self.image, GREY, points)
+        pygame.draw.polygon(self.image, GREEN, points)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.bottomleft = gameRect.bottomleft
@@ -346,6 +376,8 @@ class Game:
         self.allGroup = pygame.sprite.Group()
         self.ballGroup = pygame.sprite.Group()
         Ball.groups = self.ballGroup, self.allGroup           # Sprite class uses groups a lot
+        self.missileGroup = pygame.sprite.Group()
+        Missile.groups = self.missileGroup, self.allGroup
         #self.engineGroup = pygame.sprite.Group()      # Not managed to get engines working using sprites.
         #Engine.groups = self.engineGroup, self.allGroup        
         self.asteroidGroup = pygame.sprite.Group()
@@ -361,7 +393,8 @@ class Game:
         
         # Create the sprites
         self.text = Text()
-        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000,200)
+        self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000,200,20,WHITE)
+        self.missile = Missile((random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150)),2000,2000,50,10,RED)
         self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right - 100),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
 
         self.ground = Ground(self.landingStrip)
@@ -393,7 +426,7 @@ class Asteroid(pygame.sprite.Sprite):
         self.image = pygame.Surface((2*radius, 2*radius))
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
-        pygame.draw.circle(self.image, RED, self.rect.center, radius)
+        pygame.draw.circle(self.image, (150,150,150), self.rect.center, radius)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.radius = radius
@@ -534,7 +567,8 @@ while True:
     asteroid_collisions = pygame.sprite.spritecollide(game.ball,game.asteroidGroup,False)
     ground_collisions = pygame.sprite.spritecollide(game.ball,game.groundGroup,False)
     landingStrip_collisions = pygame.sprite.spritecollide(game.ball,game.landingStripGroup,False)
-    for item in asteroid_collisions + ground_collisions + landingStrip_collisions:
+    missile_collisions = pygame.sprite.spritecollide(game.ball, game.missileGroup, False)
+    for item in asteroid_collisions + ground_collisions + landingStrip_collisions + missile_collisions:
         # Now we accurately check out those possible collisions
         if pygame.sprite.collide_mask(game.ball,item):
             # Below is the coordinate in the ball mask where the overlap has hit
@@ -557,6 +591,7 @@ while True:
     game.textGroup.clear(screen,background)
     game.groundGroup.clear(screen,background)
     game.ballGroup.clear(screen,background)
+    game.missileGroup.clear(screen,background)
     game.asteroidGroup.clear(screen,background)
     game.landingStripGroup.clear(screen,background)
     for engine in Engine.engines:
@@ -573,12 +608,14 @@ while True:
     game.landingStripGroup.draw(screen)
     for engine in Engine.engines:
         engine.draw()
+    game.missileGroup.draw(screen)
     game.ballGroup.draw(screen)
     
     # Update everything that needs updating
     for explosion in Explosion.explosions:
         explosion.update(msecs)
     game.ballGroup.update(msecs)
+    game.missileGroup.update(msecs)
     game.textGroup.update()
 
     
