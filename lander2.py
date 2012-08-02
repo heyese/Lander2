@@ -115,15 +115,12 @@ class Engine():
     
     def clear(self):
         # Here I want to trim the background down to size and blit that
-        # over the image.  Not sure how to do it just nowm so I'll use a square of black.
+        # over the image.  Not sure how to do it just now so I'll use a square of black.
         screen.blit(self.image_copy,self.rect)
         # If the item is no longer alive, it should no longer have an engine
         if self.item not in game.allGroup:
             Engine.engines.remove(self)
-        
-    
-        
-        
+             
 class Ball(pygame.sprite.Sprite):
     def __init__(self,(x,y),fuel,shield,accel_magnitude,radius,colour):
         pygame.sprite.Sprite.__init__(self, self.groups)
@@ -233,7 +230,7 @@ class Ball(pygame.sprite.Sprite):
         # completely over the landing strip, weve landed.
         if self.rect.centerx < landingStrip.rect.left or self.rect.centerx > landingStrip.rect.right or self.rect.centery > landingStrip.rect.bottom:
             return False
-        if abs(self.x_vel) > 20 or abs(self.y_vel) > 20:
+        if abs(self.x_vel) > 30 or abs(self.y_vel) > 30:
             return False
         return True
             
@@ -307,6 +304,15 @@ class Missile(Ball):
             (self.x_accel, self.y_accel) = (0,0)
             return                
         (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
+    
+    def update_shield(self):
+        # if missile is close - ie. a rect collide - with other solid objects and self.shield > 0 then switch on the shield
+        close_encounters = pygame.sprite.spritecollide(self,game.staticSolidsGroup,False)
+        if len(close_encounters) > 0 and self.shield > 0: 
+            self.shield -= 1
+            self.shield_active = True
+        else:
+            self.shield_active = False
         
 class Ground(pygame.sprite.Sprite):
     def __init__(self, landingStrip):
@@ -341,10 +347,7 @@ class Ground(pygame.sprite.Sprite):
         pygame.draw.polygon(self.image, GREEN, points)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
-        self.rect.bottomleft = gameRect.bottomleft
-
-        
-        
+        self.rect.bottomleft = gameRect.bottomleft       
         
 class Game:
 # the game class!!
@@ -374,18 +377,17 @@ class Game:
         Engine.engines = []
         # Set up the sprite groups
         self.allGroup = pygame.sprite.Group()
+        self.staticSolidsGroup = pygame.sprite.Group()
         self.ballGroup = pygame.sprite.Group()
-        Ball.groups = self.ballGroup, self.allGroup           # Sprite class uses groups a lot
+        Ball.groups = self.ballGroup, self.allGroup         # Sprite class uses groups a lot
         self.missileGroup = pygame.sprite.Group()
-        Missile.groups = self.missileGroup, self.allGroup
-        #self.engineGroup = pygame.sprite.Group()      # Not managed to get engines working using sprites.
-        #Engine.groups = self.engineGroup, self.allGroup        
+        Missile.groups = self.missileGroup, self.allGroup    
         self.asteroidGroup = pygame.sprite.Group()
-        Asteroid.groups = self.asteroidGroup, self.allGroup
+        Asteroid.groups = self.asteroidGroup, self.staticSolidsGroup, self.allGroup
         self.groundGroup = pygame.sprite.Group()
-        Ground.groups = self.groundGroup, self.allGroup
+        Ground.groups = self.groundGroup, self.staticSolidsGroup, self.allGroup
         self.landingStripGroup = pygame.sprite.Group()
-        LandingStrip.groups = self.landingStripGroup, self.allGroup
+        LandingStrip.groups = self.landingStripGroup, self.staticSolidsGroup, self.allGroup
         self.textGroup = pygame.sprite.Group()
         Text.groups = self.textGroup, self.allGroup
         self.explosionGroup = pygame.sprite.Group()
@@ -394,7 +396,7 @@ class Game:
         # Create the sprites
         self.text = Text()
         self.ball = Ball((random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20),1000,2000,200,20,WHITE)
-        self.missile = Missile((random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150)),2000,2000,50,10,RED)
+        self.missile = Missile((random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150)),2000,400,50,10,RED)
         self.landingStrip = LandingStrip((random.randrange(gameRect.left,gameRect.right - 100),random.randrange(gameRect.bottom - 100,gameRect.bottom)),100)
 
         self.ground = Ground(self.landingStrip)
@@ -417,8 +419,6 @@ class Game:
         # Remove the sprite from any groups it's a member of
         game.ball.kill()
 
-
-# the asteroid class!
 class Asteroid(pygame.sprite.Sprite):
     
     def __init__(self,(x,y),radius=10):
@@ -487,17 +487,12 @@ class Explosion():
             self.clear()
             Explosion.explosions.remove(self)
 
-
-        
-        
-
-#############################################################################################
-
 class Text(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self, self.groups)
+        self.font = pygame.font.Font(None, 36)
         text_string = ''
-        self.image = font.render(text_string, 0, WHITE, BLACK)
+        self.image = self.font.render(text_string, 0, WHITE, BLACK)
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         
@@ -511,7 +506,7 @@ class Text(pygame.sprite.Sprite):
         #acceleration = "Acceleration (%0.1f, %0.1f)" % (game.ball.x_accel,game.ball.y_accel)
         fps = "FPS: %0.1f" % clock.get_fps()
         text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20)
-        self.image = font.render(text_string, 0, WHITE, BLACK)
+        self.image = self.font.render(text_string, 0, WHITE, BLACK)
 
 class LandingStrip(pygame.sprite.Sprite):
     def __init__(self,(x,y),length):
@@ -526,11 +521,10 @@ class LandingStrip(pygame.sprite.Sprite):
         
 
 
-
 #############################################################################################
 
 # set up the window
-screen = pygame.display.set_mode((1200, 650), 0, 32)
+screen = pygame.display.set_mode((1300, 700), 0, 32)    # Can use pygame.FULLSCREEN instead of 0
 
 background = pygame.Surface(screen.get_size())  # Create empty pygame surface
 background.fill(BLACK)     # Fill the background white color (red,green,blue)
@@ -539,9 +533,6 @@ screen.blit(background, (0, 0))
 
 pygame.display.set_caption('Lander')
 gameRect = screen.get_rect()
-#accel_magnitude = 200
-font = pygame.font.Font(None, 36)
-text = None
 clock = pygame.time.Clock()
 
 # Create the game
@@ -564,11 +555,12 @@ while True:
 
     # COLLISIONS        
     # First we do a quick cheap check to see if anything might be colliding with the ball ...
-    asteroid_collisions = pygame.sprite.spritecollide(game.ball,game.asteroidGroup,False)
-    ground_collisions = pygame.sprite.spritecollide(game.ball,game.groundGroup,False)
-    landingStrip_collisions = pygame.sprite.spritecollide(game.ball,game.landingStripGroup,False)
-    missile_collisions = pygame.sprite.spritecollide(game.ball, game.missileGroup, False)
-    for item in asteroid_collisions + ground_collisions + landingStrip_collisions + missile_collisions:
+    ballStaticSolidsCols = pygame.sprite.spritecollide(game.ball,game.staticSolidsGroup,False)
+    missilesStaticSolidsCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.staticSolidsGroup, False, False)
+    ballMissileCols = pygame.sprite.spritecollide(game.ball, game.missileGroup, False)
+    
+    # Has the ball collided with anything that isn't a missile?
+    for item in ballStaticSolidsCols:
         # Now we accurately check out those possible collisions
         if pygame.sprite.collide_mask(game.ball,item):
             # Below is the coordinate in the ball mask where the overlap has hit
@@ -582,6 +574,38 @@ while True:
             else:
                 # We are colliding with something solid!
                 game.ball.fixed_collision((x,y))
+    
+    # Has a missile collided with anything that isn't the ball?
+    for (missile, items) in missilesStaticSolidsCols_dict.items():
+        for item in items:
+            # Now we accurately check out those possible collisions
+            if pygame.sprite.collide_mask(missile,item):
+                # Below is the coordinate in the missile mask where the overlap has hit
+                (x,y) = missile.mask.overlap(item.mask, (item.rect.topleft[0] - missile.rect.topleft[0],item.rect.topleft[1] - missile.rect.topleft[1]))
+                if missile.shield_active == False:
+                    # Remove missile from all groups and have an explosion
+                    missile.kill()
+                    Explosion(missile.rect.center,missile.radius,6*missile.radius)
+                else:
+                    # Missile is colliding with it's shield on ...
+                    missile.fixed_collision((x,y))
+
+    # Has a missile collided with the ball!?
+    for missile in ballMissileCols:
+        # Now we accurately check out those possible collisions
+        if pygame.sprite.collide_mask(game.ball,missile):
+            # Missile should blow up
+            missile.kill()
+            Explosion(missile.rect.center,missile.radius,6*missile.radius)
+            # Ball survives if shield is on, blow up if it isn't
+            if game.ball.shield_active == False:
+                game.it_is_game_over()
+            # If we have our shield on, missile blows up and nothing directly 
+            # happens to ship.  However, the explosion will push us away, so
+            # next step is to test for explosion collisions.
+            
+            
+    
 
         
     # UPDATE THE SCREEN
