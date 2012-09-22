@@ -326,13 +326,16 @@ class Missile(Ball):
             (self.x_accel, self.y_accel) = (0,0)             
         (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
         self.add_gravitational_accel()
+        self.add_external_acceleration()
         
     
     def update_shield(self,msecs):
         # If a missile activates its shield, it should stay on for a minimum amount of time
         # if missile is close - ie. a rect collide - with other solid objects and self.shield > 0 then switch on the shield
         close_encounters = pygame.sprite.spritecollide(self,game.staticSolidsGroup,False)
-        if len(close_encounters) > 0 and self.shield > 0: 
+        close_explosion_encounters = pygame.sprite.spritecollide(self,game.explosionGroup,False)
+        
+        if (len(close_encounters) > 0 or len(close_explosion_encounters) > 0) and self.shield > 0: 
             self.shield_timer = self.shield_timer_min
             self.shield -= 1
             self.shield_active = True
@@ -430,7 +433,7 @@ class Game:
         self.text = Text()
         ball_center = (random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20)
         self.ball = Ball(center=ball_center,fuel=3000,shield=2000,accel_magnitude=200,radius=20,colour=WHITE)
-        for i in range(1):
+        for i in range(3):
             missile_center = (random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150))
             self.missile = Missile(center=missile_center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
         coords = (random.randrange(gameRect.left,gameRect.right - 100),random.randrange(gameRect.bottom - 100,gameRect.bottom))
@@ -510,8 +513,8 @@ class Explosion(pygame.sprite.Sprite):
     def clear(self):
         screen.blit(self.image_copy,self.rect)
 
-    def update_ball_angle_to_explosion(self):
-        (x,y) = (game.ball.x - self.rect.centerx,game.ball.y - self.rect.centery)
+    def update_angle_to_explosion(self,item):
+        (x,y) = (item.x - self.rect.centerx,item.y - self.rect.centery)
         if x == 0:
             #if y == 0:
             #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
@@ -533,7 +536,7 @@ class Explosion(pygame.sprite.Sprite):
             self.clear()
             Explosion.explosions.remove(self)
             self.kill()
-        self.update_ball_angle_to_explosion()
+        #self.update_ball_angle_to_explosion()   # Only need to calculate this during the collision
 
 class Text(pygame.sprite.Sprite):
     def __init__(self):
@@ -621,6 +624,8 @@ while True:
     
     #ballExplosionCols = pygame.sprite.spritecollide(game.ball,game.explosionGroup,False)
     ballExplosionCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.explosionGroup,False,False)
+    missilesExplosionCols_dict = pygame.sprite.groupcollide(game.missileGroup,game.explosionGroup,False,False)
+
     
     # Has the ball collided with anything that isn't a missile?
     # There's only one ball, but using the group is useful because if we die I can remove the ball
@@ -690,8 +695,20 @@ while True:
                     # in this case the acceleration is being applied to the ball
                     # rather than the other object
                     #         (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
+                    explosion.update_angle_to_explosion(ball)
                     ball.external_acceleration(100,explosion.angle) # (value,explosion.angle)
-                
+                    
+    for (missile,explosions) in missilesExplosionCols_dict.items():
+        for explosion in explosions:
+            if pygame.sprite.collide_mask(missile,explosion):
+                # Missile should blow up if it's shield isn't on
+                if missile.shield_active == False:
+                    missile.kill()
+                    Explosion(missile.rect.center,missile.radius,6*missile.radius)
+                else:
+                    explosion.update_angle_to_explosion(missile)
+                    
+                    missile.external_acceleration(100,explosion.angle) # (value,explosion.angle)                
             
     
 
