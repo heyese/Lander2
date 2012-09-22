@@ -134,6 +134,7 @@ class Ball(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.angle = math.pi
         self.accel_magnitude = accel_magnitude
+        (self.x_accel_external, self.y_accel_external) = (0,0)
 
         self.radius = radius
         self.rect.center = center    
@@ -228,9 +229,21 @@ class Ball(pygame.sprite.Sprite):
             # There is no acceleration when the mouse button or 's' isn't being pressed
             (self.x_accel, self.y_accel) = (0,0)
         self.add_gravitational_accel()
+        self.add_external_acceleration()
         
     def add_gravitational_accel(self):
         self.y_accel += game.gravity
+      
+    def external_acceleration(self,magnitude,angle):
+        self.x_accel_external += magnitude * math.cos(angle)
+        self.y_accel_external += magnitude * math.sin(angle)
+        
+    def add_external_acceleration(self):
+        self.x_accel += self.x_accel_external
+        self.y_accel += self.y_accel_external
+        # Now reset the external acceleration
+        (self.x_accel_external,self.y_accel_external) = (0,0)
+        
         
     
     def landed(self,landingStrip):
@@ -483,9 +496,6 @@ class Explosion(pygame.sprite.Sprite):
         self.image = self.image_copy.copy()
         self.rect = self.image.get_rect()
         self.image.set_colorkey(BLACK) # make the black background transparent
-        self.rect = self.image.get_rect()
-        
-       
 
         for temp_radius in range(self.current_radius,1,-5):
             colour_factor = random.randrange(0,256)
@@ -496,12 +506,20 @@ class Explosion(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.center = (self.x,self.y)
         screen.blit(self.image,self.rect)
-
-		
         
     def clear(self):
         screen.blit(self.image_copy,self.rect)
 
+    def update_ball_angle_to_explosion(self):
+        (x,y) = (game.ball.x - self.rect.centerx,game.ball.y - self.rect.centery)
+        if x == 0:
+            #if y == 0:
+            #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
+            if y > 0: self.angle = math.pi / 2
+            if y < 0: self.angle = (3.0/2) * math.pi
+        else:
+            if x > 0 and y >= 0 or x > 0 and y < 0: self.angle = math.atan((1.0*y)/x)
+            if x < 0 and y >= 0 or x < 0 and y < 0: self.angle = math.atan((1.0*y)/x) + math.pi        
     
     def update(self,msecs):
         self.timer += msecs
@@ -514,6 +532,8 @@ class Explosion(pygame.sprite.Sprite):
             # Explosion has reached maximum size - get rid of it
             self.clear()
             Explosion.explosions.remove(self)
+            self.kill()
+        self.update_ball_angle_to_explosion()
 
 class Text(pygame.sprite.Sprite):
     def __init__(self):
@@ -592,25 +612,34 @@ while True:
 
     # COLLISIONS        
     # First we do a quick cheap check to see if anything might be colliding with the ball ...
-    ballStaticSolidsCols = pygame.sprite.spritecollide(game.ball,game.staticSolidsGroup,False)
+    #ballStaticSolidsCols = pygame.sprite.spritecollide(game.ball,game.staticSolidsGroup,False)
+    ballStaticSolidsCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.staticSolidsGroup,False,False)
+    
     missilesStaticSolidsCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.staticSolidsGroup, False, False)
-    ballMissileCols = pygame.sprite.spritecollide(game.ball, game.missileGroup, False)
+    #ballMissileCols = pygame.sprite.spritecollide(game.ball, game.missileGroup, False)
+    ballMissileCols_dict = pygame.sprite.groupcollide(game.ballGroup, game.missileGroup,False,False)
+    
+    #ballExplosionCols = pygame.sprite.spritecollide(game.ball,game.explosionGroup,False)
+    ballExplosionCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.explosionGroup,False,False)
     
     # Has the ball collided with anything that isn't a missile?
-    for item in ballStaticSolidsCols:
-        # Now we accurately check out those possible collisions
-        if pygame.sprite.collide_mask(game.ball,item):
-            # Below is the coordinate in the ball mask where the overlap has hit
-            (x,y) = game.ball.mask.overlap(item.mask, (item.rect.topleft[0] - game.ball.rect.topleft[0],item.rect.topleft[1] - game.ball.rect.topleft[1]))
-            if game.ball.shield_active == False and game.ball.landed(game.landingStrip) == False and game.game_over == False:
-                # We have no shield up and we've not landed ...
-                game.it_is_game_over()
-            elif game.ball.landed(game.landingStrip) == True:
-                print "You've landed!"
-                game.next_level()
-            else:
-                # We are colliding with something solid!
-                game.ball.fixed_collision((x,y))
+    # There's only one ball, but using the group is useful because if we die I can remove the ball
+    # from the group and these checks stops being applicable.
+    for (ball,items) in ballStaticSolidsCols_dict.items():
+        for item in items:
+            # Now we accurately check out those possible collisions
+            if pygame.sprite.collide_mask(ball,item):
+                # Below is the coordinate in the ball mask where the overlap has hit
+                (x,y) = ball.mask.overlap(item.mask, (item.rect.topleft[0] - ball.rect.topleft[0],item.rect.topleft[1] - ball.rect.topleft[1]))
+                if ball.shield_active == False and ball.landed(game.landingStrip) == False and game.game_over == False:
+                    # We have no shield up and we've not landed ...
+                    game.it_is_game_over()
+                elif ball.landed(game.landingStrip) == True:
+                    print "You've landed!"
+                    game.next_level()
+                else:
+                    # We are colliding with something solid!
+                    ball.fixed_collision((x,y))
     
     # Has a missile collided with anything that isn't the ball?
     for (missile, items) in missilesStaticSolidsCols_dict.items():
@@ -628,28 +657,41 @@ while True:
                     missile.fixed_collision((x,y))
 
     # Has a missile collided with the ball!?
-    for missile in ballMissileCols:
-        # Now we accurately check out those possible collisions
-        if pygame.sprite.collide_mask(game.ball,missile):
-            # Missile should blow up
-            missile.kill()
-            Explosion(missile.rect.center,missile.radius,6*missile.radius)
-            # Ball survives if shield is on, blows up if it isn't
-            if game.ball.shield_active == False:
-                game.it_is_game_over()
-            # If we have our shield on, missile blows up and nothing directly 
-            # happens to ship.  However, the explosion will push us away, so
-            # next step is to test for explosion collisions.
-    
-    # For now, if two missiles collide, rather than treating each as though they've
-    # hit a static object, I'll just make them both blow up.
+    for (ball,missiles) in ballMissileCols_dict.items():
+        for missile in missiles:
+            # Now we accurately check out those possible collisions
+            if pygame.sprite.collide_mask(ball,missile):
+                # Missile should blow up
+                missile.kill()
+                Explosion(missile.rect.center,missile.radius,60*missile.radius)    ###
+                # Ball survives if shield is on, blows up if it isn't
+                if ball.shield_active == False:
+                    game.it_is_game_over()
+                # If we have our shield on, missile blows up and nothing directly 
+                # happens to ship.  However, the explosion will push us away, so
+                # next step is to test for explosion collisions.
+        
+        # For now, if two missiles collide, rather than treating each as though they've
+        # hit a static object, I'll just make them both blow up.
     
     # Has a missile or ball collided with any explosions?
     # In this case, they should be propelled away from the centre of the explosion
     # Perhaps a stronger force should be applied the closer they are to the centre of
     # the explosion
-    
-            
+    for (ball,explosions) in ballExplosionCols_dict.items():
+        for explosion in explosions:
+            if pygame.sprite.collide_mask(ball,explosion):
+                # Contact with an explosion kills you if it's not shielded  
+                if ball.shield_active == False:
+                    game.it_is_game_over()
+                else:
+                    # Ball should get pushed away from the cente of the explosion
+                    # Just like the missile accelerating towards the ball, apart from
+                    # in this case the acceleration is being applied to the ball
+                    # rather than the other object
+                    #         (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
+                    ball.external_acceleration(100,explosion.angle) # (value,explosion.angle)
+                
             
     
 
@@ -664,6 +706,7 @@ while True:
     game.missileGroup.clear(screen,background)
     game.asteroidGroup.clear(screen,background)
     game.landingStripGroup.clear(screen,background)
+    #game.explosionGroup.clear(screen,background)
     for engine in Engine.engines:
         engine.clear()
 
@@ -672,6 +715,7 @@ while True:
     # Draw function for asteroids will be needed when explosions go over them
     for explosion in Explosion.explosions:
         explosion.draw()    
+    #game.explosionGroup.draw(screen)
     game.textGroup.draw(screen)
     game.groundGroup.draw(screen)
     game.asteroidGroup.draw(screen)
@@ -684,6 +728,7 @@ while True:
     # Update everything that needs updating
     for explosion in Explosion.explosions:
         explosion.update(msecs)
+    #game.explosionGroup.update(msecs)
     game.ballGroup.update(msecs)
     game.missileGroup.update(msecs)
     game.textGroup.update()
