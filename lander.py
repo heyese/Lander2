@@ -291,8 +291,6 @@ class Ball(pygame.sprite.Sprite):
         if mod_v * math.cos(angle) >= 0:
             (self.x_vel,self.y_vel) = (new_v[0],new_v[1])
         #print "new V vector is : %s" % str(new_v)
-
-        
         
         return
 
@@ -332,10 +330,12 @@ class Missile(Ball):
     def update_shield(self,msecs):
         # If a missile activates its shield, it should stay on for a minimum amount of time
         # if missile is close - ie. a rect collide - with other solid objects and self.shield > 0 then switch on the shield
-        close_encounters = pygame.sprite.spritecollide(self,game.staticSolidsGroup,False)
+        close_solid_encounters = pygame.sprite.spritecollide(self,game.staticSolidsGroup,False)
         close_explosion_encounters = pygame.sprite.spritecollide(self,game.explosionGroup,False)
+        #close_missile_encounters = pygame.sprite.spritecollide(self,game.missileGroup,False) # missile will always collide with itself, of course
         
-        if (len(close_encounters) > 0 or len(close_explosion_encounters) > 0) and self.shield > 0: 
+        
+        if (len(close_solid_encounters) > 0 or len(close_explosion_encounters) > 0) and self.shield > 0: 
             self.shield_timer = self.shield_timer_min
             self.shield -= 1
             self.shield_active = True
@@ -391,7 +391,8 @@ class Game:
 # start animation?
     def __init__(self):
         self.gravity = 20
-        self.no_of_asteroids = 10
+        self.no_of_asteroids = 1
+        self.no_of_launchers = 0
         self.pad_size = 50
         self.score = 0
         self.level = 0
@@ -402,13 +403,15 @@ class Game:
     def next_level(self):
         self.level += 1
         self.score += 100
-        self.no_of_asteroids += 3
+        self.no_of_asteroids += 0
+        self.no_of_launchers += 1
         self.level_animation()
         screen.fill(BLACK)
         
         # Clear last levels engines and explosions
         Engine.engines = []
         Explosion.explosions = []
+        Asteroid.asteroids = []
         # Set up the sprite groups
         self.allGroup = pygame.sprite.Group()
         self.explosionGroup = pygame.sprite.Group()
@@ -422,6 +425,8 @@ class Game:
         Asteroid.groups = self.asteroidGroup, self.staticSolidsGroup, self.allGroup
         self.groundGroup = pygame.sprite.Group()
         Ground.groups = self.groundGroup, self.staticSolidsGroup, self.allGroup
+        self.launcherGroup = pygame.sprite.Group()
+        Launcher.groups = self.launcherGroup, self.allGroup
         self.landingStripGroup = pygame.sprite.Group()
         LandingStrip.groups = self.landingStripGroup, self.staticSolidsGroup, self.allGroup
         self.textGroup = pygame.sprite.Group()
@@ -429,21 +434,36 @@ class Game:
         self.explosionGroup = pygame.sprite.Group()
         Explosion.groups = self.explosionGroup, self.allGroup
         
+        # Below, I need to create the launchers.
+        # Each sits on a particular asteroid.  If it intersects with any other asteroid, landing pad or ground, it explodes
+        # On it's update method, after a timer, it launches a missile.
+        # When it does that, for a while it has a kind of shield which means the missile doesn't collide with it
+        # That shield switches off after a couple of seconds
+        # They can be destroyed by missiles colliding with them and by the ball colliding with them (shield up, though!).
+        
         # Create the sprites
         self.text = Text()
         ball_center = (random.randrange(gameRect.left + 20,gameRect.right - 20),gameRect.top + 20)
         self.ball = Ball(center=ball_center,fuel=3000,shield=2000,accel_magnitude=200,radius=20,colour=WHITE)
-        for i in range(3):
-            missile_center = (random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150))
-            self.missile = Missile(center=missile_center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
+        #for i in range(3):
+        #    missile_center = (random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150))
+        #    self.missile = Missile(center=missile_center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
         coords = (random.randrange(gameRect.left,gameRect.right - 100),random.randrange(gameRect.bottom - 100,gameRect.bottom))
         self.landingStrip = LandingStrip(topleft=coords,length=100)
 
         self.ground = Ground(self.landingStrip)
+        
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
             rad = random.randrange(20,80)
             asteroid = Asteroid(center=(x,y),radius=rad)
+        # Create the missile launchers
+        for i in range(self.no_of_launchers):
+            # first, pick a random asteroid
+            asteroid = Asteroid.asteroids[random.randrange(0,len(Asteroid.asteroids))]
+            # second, pick a random angle in degrees
+            degree = random.randrange(0,360)
+            launcher = Launcher(asteroid,degree,50)
                     
     def level_animation(self):
         pass
@@ -464,8 +484,10 @@ class Game:
 
 class Asteroid(pygame.sprite.Sprite):
     
+    asteroids = []
     def __init__(self,center=(0,0),radius=10):
         pygame.sprite.Sprite.__init__(self, self.groups)
+        Asteroid.asteroids.append(self) # add this instance to the class list
         self.image = pygame.Surface((2*radius, 2*radius))
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
@@ -475,6 +497,43 @@ class Asteroid(pygame.sprite.Sprite):
         self.radius = radius
         self.rect.center = center
 
+class Launcher(pygame.sprite.Sprite):
+    
+    def __init__(self,asteroid,degree,size):
+        # A launcher will be a triangle that sits on the surface (maybe a bit beneath the surface, as the base
+        # of the triangle will be flat but the asteroid surface will be curved) of an asteroid and will be
+        # able to fire missiles.
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.asteroid = asteroid
+        self.image = pygame.Surface((size, size))
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        pygame.draw.polygon(self.image, (100,100,100), [(0,size),(size/2,0),(size,size)])
+        #rotate surf by DEGREE amount degrees
+        self.image = pygame.transform.rotate(self.image, degree)
+        #get the rect of the rotated surface
+        self.rect = self.image.get_rect()
+        self.mask = pygame.mask.from_surface(self.image)
+        (x,y) = asteroid.rect.center
+        (X,Y) = ((x - asteroid.radius * math.sin(degree * math.pi / 180.0)),(y - asteroid.radius * math.cos(degree * math.pi / 180.0)))
+        self.rect.center = (X,Y)
+        self.image = self.image.convert_alpha()
+        self.timer = 0
+
+    def update(self,msecs):
+        # We decide whether to create a missile at the center.
+        # If one is created, we fire it we an appropriate velocity vector
+        # The initial contact with the missile shouldn't blow up the launcher,
+        # but subsequent contact should
+        self.timer += msecs
+        if self.timer > 5000:
+            self.timer = 0
+            # Missile properties below could be properties of the launcher, of course
+            missile = Missile(center=self.rect.center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
+            missile.update(1) # To set the shield on initially
+            # Now wish to set an appropriate initial velocity for the missile - in the direction of the launcher
+            
+        
+        
 class Explosion(pygame.sprite.Sprite):
     explosions = []
     def __init__(self,(x,y),initial_radius, final_radius):
@@ -518,10 +577,10 @@ class Explosion(pygame.sprite.Sprite):
         if x == 0:
             #if y == 0:
             #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
-            if y > 0: self.angle = math.pi / 2
+            if y >= 0: self.angle = math.pi / 2
             if y < 0: self.angle = (3.0/2) * math.pi
         else:
-            if x > 0 and y >= 0 or x > 0 and y < 0: self.angle = math.atan((1.0*y)/x)
+            if x >= 0 and y >= 0 or x >= 0 and y < 0: self.angle = math.atan((1.0*y)/x)
             if x < 0 and y >= 0 or x < 0 and y < 0: self.angle = math.atan((1.0*y)/x) + math.pi        
     
     def update(self,msecs):
@@ -536,7 +595,6 @@ class Explosion(pygame.sprite.Sprite):
             self.clear()
             Explosion.explosions.remove(self)
             self.kill()
-        #self.update_ball_angle_to_explosion()   # Only need to calculate this during the collision
 
 class Text(pygame.sprite.Sprite):
     def __init__(self):
@@ -615,14 +673,10 @@ while True:
 
     # COLLISIONS        
     # First we do a quick cheap check to see if anything might be colliding with the ball ...
-    #ballStaticSolidsCols = pygame.sprite.spritecollide(game.ball,game.staticSolidsGroup,False)
     ballStaticSolidsCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.staticSolidsGroup,False,False)
-    
     missilesStaticSolidsCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.staticSolidsGroup, False, False)
-    #ballMissileCols = pygame.sprite.spritecollide(game.ball, game.missileGroup, False)
     ballMissileCols_dict = pygame.sprite.groupcollide(game.ballGroup, game.missileGroup,False,False)
-    
-    #ballExplosionCols = pygame.sprite.spritecollide(game.ball,game.explosionGroup,False)
+    missileMissileCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.missileGroup,False,False)
     ballExplosionCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.explosionGroup,False,False)
     missilesExplosionCols_dict = pygame.sprite.groupcollide(game.missileGroup,game.explosionGroup,False,False)
 
@@ -646,7 +700,7 @@ while True:
                     # We are colliding with something solid!
                     ball.fixed_collision((x,y))
     
-    # Has a missile collided with anything that isn't the ball?
+    # Has a missile collided with anything solid - ground or asteroid or landing pad - that isn't the ball or another missile?
     for (missile, items) in missilesStaticSolidsCols_dict.items():
         for item in items:
             # Now we accurately check out those possible collisions
@@ -668,13 +722,28 @@ while True:
             if pygame.sprite.collide_mask(ball,missile):
                 # Missile should blow up
                 missile.kill()
-                Explosion(missile.rect.center,missile.radius,60*missile.radius)    ###
+                Explosion(missile.rect.center,missile.radius,6*missile.radius)    ###
                 # Ball survives if shield is on, blows up if it isn't
                 if ball.shield_active == False:
                     game.it_is_game_over()
                 # If we have our shield on, missile blows up and nothing directly 
                 # happens to ship.  However, the explosion will push us away, so
                 # next step is to test for explosion collisions.
+                
+    # Has a missile collided with another missile!?
+    # I currently don't bother to get a missile to turn on it's shield and bounce off other missiles
+    for (miss,missiles) in missileMissileCols_dict.items():
+        # Check they are both still in the group, as we may have treated
+        # this collision already
+        if game.missileGroup.has([miss,missiles]):
+            for missile in missiles:
+                if missile != miss:
+                    if pygame.sprite.collide_mask(miss,missile):
+                        # Missile should blow up
+                        missile.kill()
+                        Explosion(missile.rect.center,missile.radius,6*missile.radius)    ###
+                        miss.kill()
+                        Explosion(miss.rect.center,miss.radius,6*miss.radius)                    
         
         # For now, if two missiles collide, rather than treating each as though they've
         # hit a static object, I'll just make them both blow up.
@@ -691,10 +760,6 @@ while True:
                     game.it_is_game_over()
                 else:
                     # Ball should get pushed away from the cente of the explosion
-                    # Just like the missile accelerating towards the ball, apart from
-                    # in this case the acceleration is being applied to the ball
-                    # rather than the other object
-                    #         (self.x_accel, self.y_accel) = (self.accel_magnitude * math.cos(self.angle),self.accel_magnitude * math.sin(self.angle))
                     explosion.update_angle_to_explosion(ball)
                     ball.external_acceleration(100,explosion.angle) # (value,explosion.angle)
                     
@@ -707,7 +772,6 @@ while True:
                     Explosion(missile.rect.center,missile.radius,6*missile.radius)
                 else:
                     explosion.update_angle_to_explosion(missile)
-                    
                     missile.external_acceleration(100,explosion.angle) # (value,explosion.angle)                
             
     
@@ -723,6 +787,7 @@ while True:
     game.missileGroup.clear(screen,background)
     game.asteroidGroup.clear(screen,background)
     game.landingStripGroup.clear(screen,background)
+    game.launcherGroup.clear(screen,background)
     #game.explosionGroup.clear(screen,background)
     for engine in Engine.engines:
         engine.clear()
@@ -735,6 +800,7 @@ while True:
     #game.explosionGroup.draw(screen)
     game.textGroup.draw(screen)
     game.groundGroup.draw(screen)
+    game.launcherGroup.draw(screen)
     game.asteroidGroup.draw(screen)
     game.landingStripGroup.draw(screen)
     for engine in Engine.engines:
@@ -749,6 +815,7 @@ while True:
     game.ballGroup.update(msecs)
     game.missileGroup.update(msecs)
     game.textGroup.update()
+    game.launcherGroup.update(msecs)
 
     
     # draw the window onto the screen
