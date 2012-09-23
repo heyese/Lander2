@@ -515,13 +515,16 @@ class Launcher(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         (x,y) = asteroid.rect.center
         (X,Y) = ((x - asteroid.radius * math.sin(degree * math.pi / 180.0)),(y - asteroid.radius * math.cos(degree * math.pi / 180.0)))
+        # The vector from the centre of the asteroid to the centre of the launcher gives our desired initial velocity direction for missiles
+        mod_v = math.sqrt((X-x) ** 2 + (Y-y) ** 2)
+        self.initial_missile_velocity_unit_vector = ((X-x)*1.0/mod_v,(Y-y)*1.0/mod_v)
         self.rect.center = (X,Y)
         self.image = self.image.convert_alpha()
         self.timer = 0
 
     def update(self,msecs):
         # We decide whether to create a missile at the center.
-        # If one is created, we fire it we an appropriate velocity vector
+        # If one is created, we fire it with an appropriate velocity vector
         # The initial contact with the missile shouldn't blow up the launcher,
         # but subsequent contact should
         self.timer += msecs
@@ -530,7 +533,9 @@ class Launcher(pygame.sprite.Sprite):
             # Missile properties below could be properties of the launcher, of course
             missile = Missile(center=self.rect.center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
             missile.update(1) # To set the shield on initially
+            speed = 100
             # Now wish to set an appropriate initial velocity for the missile - in the direction of the launcher
+            (missile.x_vel,missile.y_vel) = (speed*self.initial_missile_velocity_unit_vector[0],speed*self.initial_missile_velocity_unit_vector[1])
             
         
         
