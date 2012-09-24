@@ -471,9 +471,10 @@ class Game:
                 degree = random.randrange(0,360)
                 launcher = Launcher(asteroid,degree,50)
                 # if launcher coincides with any other asteroids, try again
-                if len(pygame.sprite.spritecollide(launcher,self.asteroidGroup,False)) > 1 or len(pygame.sprite.spritecollide(launcher,self.launcherGroup,False)) > 1 or tries >= 10:  # launcher etc.
+                if len(pygame.sprite.spritecollide(launcher,self.asteroidGroup,False)) > 1 or len(pygame.sprite.spritecollide(launcher,self.launcherGroup,False)) > 1:  # launcher etc.
                     launcher.kill()
                     tries += 1
+                    if tries >= 10: break
                 else:
                     break
                     
@@ -508,6 +509,7 @@ class Asteroid(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.radius = radius
         self.rect.center = center
+        self.life = 200
 
 class Launcher(pygame.sprite.Sprite):
     
@@ -611,8 +613,8 @@ class Explosion(pygame.sprite.Sprite):
     def update(self,msecs):
         self.timer += msecs
         # The line below slows the explosion down a bit
-        if self.timer > self.draw_time + 10:   
-            self.current_radius += 1
+        if self.timer > self.draw_time + 20:   
+            self.current_radius += 2
             self.draw_time = self.timer
 
         if self.current_radius >= self.final_radius:
@@ -639,7 +641,8 @@ class Text(pygame.sprite.Sprite):
         speed = "Speed (%0.1f)" % (math.sqrt(game.ball.x_vel ** 2 + game.ball.y_vel ** 2))
         #acceleration = "Acceleration (%0.1f, %0.1f)" % (game.ball.x_accel,game.ball.y_accel)
         fps = "FPS: %0.1f" % clock.get_fps()
-        text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20)
+        level = "Level: %s" % game.level
+        text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20) + level.ljust(20)
         self.image = self.font.render(text_string, 0, WHITE, BLACK)
 
 class LandingStrip(pygame.sprite.Sprite):
@@ -691,6 +694,8 @@ while True:
     if keystate[var.K_RETURN]:
         game = Game()
         NOT_YET = False
+    #if keystate[var.K_n]:   # registers several hits, so can jump many levels in one!
+    #    game.next_level()   
     if NOT_YET == True: continue
             
     game.keystate = keystate    
@@ -706,6 +711,7 @@ while True:
     ballExplosionCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.explosionGroup,False,False)
     missilesExplosionCols_dict = pygame.sprite.groupcollide(game.missileGroup,game.explosionGroup,False,False)
     launcherExplosionCols_dict = pygame.sprite.groupcollide(game.launcherGroup,game.explosionGroup,False,False)
+    asteroidExplosionCols_dict = pygame.sprite.groupcollide(game.asteroidGroup,game.explosionGroup,False,False)
     missileLauncherCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.launcherGroup,False,False)
     
 
@@ -830,7 +836,15 @@ while True:
         for explosion in explosions:
             if pygame.sprite.collide_mask(launcher,explosion):
                     launcher.kill()
-                    Explosion(launcher.rect.center,launcher.size/2.0,2*launcher.size)                
+                    Explosion(launcher.rect.center,launcher.size/2.0,2*launcher.size)
+
+    for (asteroid,explosions) in asteroidExplosionCols_dict.items():
+        for explosion in explosions:
+            if pygame.sprite.collide_mask(asteroid,explosion):
+                    asteroid.life -= 1
+                    if asteroid.life <= 0:
+                        asteroid.kill()
+                        Explosion(asteroid.rect.center,asteroid.radius,int(1.5*asteroid.radius))                     
             
     
 
