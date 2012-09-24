@@ -265,6 +265,9 @@ class Ball(pygame.sprite.Sprite):
         (Ax,Ay) = (self.rect.topleft[0] + mask_x,self.rect.topleft[1] + mask_y)
         # (Ax-Bx,Ay-By) - vector from ball centre to asteroid centre 
         mod = math.sqrt((Ax-Bx)**2 + (Ay-By)**2)
+        if mod == 0:
+            print "mod was zero - check this out"
+            return
         e2 = ((1.0/mod)*(Ax-Bx),(1.0/mod)*(Ay-By)) # unit vector from ball to asteroid
         # Now need to calculate other unit vector
         # v = |v|cos& e2  +  |v|sin& e1, where v.e2 = |v| cos&
@@ -403,8 +406,8 @@ class Game:
     def next_level(self):
         self.level += 1
         self.score += 100
-        self.no_of_asteroids += 0
-        self.no_of_launchers += 1
+        self.no_of_asteroids += 3
+        self.no_of_launchers += 3
         self.level_animation()
         screen.fill(BLACK)
         
@@ -459,11 +462,20 @@ class Game:
             asteroid = Asteroid(center=(x,y),radius=rad)
         # Create the missile launchers
         for i in range(self.no_of_launchers):
-            # first, pick a random asteroid
-            asteroid = Asteroid.asteroids[random.randrange(0,len(Asteroid.asteroids))]
-            # second, pick a random angle in degrees
-            degree = random.randrange(0,360)
-            launcher = Launcher(asteroid,degree,50)
+            # I want to be sure the launchers are in the open, so I keep trying until I get it right
+            tries = 0
+            while True:
+                # first, pick a random asteroid
+                asteroid = Asteroid.asteroids[random.randrange(0,len(Asteroid.asteroids))]
+                # second, pick a random angle in degrees
+                degree = random.randrange(0,360)
+                launcher = Launcher(asteroid,degree,50)
+                # if launcher coincides with any other asteroids, try again
+                if len(pygame.sprite.spritecollide(launcher,self.asteroidGroup,False)) > 1 or len(pygame.sprite.spritecollide(launcher,self.launcherGroup,False)) > 1 or tries >= 10:  # launcher etc.
+                    launcher.kill()
+                    tries += 1
+                else:
+                    break
                     
     def level_animation(self):
         pass
@@ -521,12 +533,14 @@ class Launcher(pygame.sprite.Sprite):
         self.rect.center = (X,Y)
         self.image = self.image.convert_alpha()
         self.timer = 0
+        self.immune_missiles = {}
+        self.size = size
 
     def update(self,msecs):
-        # We decide whether to create a missile at the center.
+        # We decide whether to launch a missile.
         # If one is created, we fire it with an appropriate velocity vector
         # The initial contact with the missile shouldn't blow up the launcher,
-        # but subsequent contact should
+        # but subsequent contact should.
         self.timer += msecs
         if self.timer > 5000:
             self.timer = 0
@@ -536,8 +550,14 @@ class Launcher(pygame.sprite.Sprite):
             speed = 100
             # Now wish to set an appropriate initial velocity for the missile - in the direction of the launcher
             (missile.x_vel,missile.y_vel) = (speed*self.initial_missile_velocity_unit_vector[0],speed*self.initial_missile_velocity_unit_vector[1])
-            
-        
+            # Launcher is to be immune to contact with this missile for the first half second
+            # Append missile and a timer to a list
+            self.immune_missiles[missile] = 0
+        # Add msecs to all timers in the immune_missiles list
+        for missile in self.immune_missiles.keys():
+            self.immune_missiles[missile] += msecs
+            if self.immune_missiles[missile] >= 900:
+                del self.immune_missiles[missile]
         
 class Explosion(pygame.sprite.Sprite):
     explosions = []
@@ -550,7 +570,7 @@ class Explosion(pygame.sprite.Sprite):
 
         self.initial_radius = initial_radius
         self.final_radius = final_radius
-        self.current_radius = self.initial_radius
+        self.current_radius = int(self.initial_radius)
         (self.x,self.y) = (x,y)
         self.timer = 0
         self.draw_time = 0
@@ -681,9 +701,13 @@ while True:
     ballStaticSolidsCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.staticSolidsGroup,False,False)
     missilesStaticSolidsCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.staticSolidsGroup, False, False)
     ballMissileCols_dict = pygame.sprite.groupcollide(game.ballGroup, game.missileGroup,False,False)
+    ballLauncherCols_dict = pygame.sprite.groupcollide(game.ballGroup, game.launcherGroup,False,False)
     missileMissileCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.missileGroup,False,False)
     ballExplosionCols_dict = pygame.sprite.groupcollide(game.ballGroup,game.explosionGroup,False,False)
     missilesExplosionCols_dict = pygame.sprite.groupcollide(game.missileGroup,game.explosionGroup,False,False)
+    launcherExplosionCols_dict = pygame.sprite.groupcollide(game.launcherGroup,game.explosionGroup,False,False)
+    missileLauncherCols_dict = pygame.sprite.groupcollide(game.missileGroup, game.launcherGroup,False,False)
+    
 
     
     # Has the ball collided with anything that isn't a missile?
@@ -734,14 +758,24 @@ while True:
                 # If we have our shield on, missile blows up and nothing directly 
                 # happens to ship.  However, the explosion will push us away, so
                 # next step is to test for explosion collisions.
+               
+    for (ball,launchers) in ballLauncherCols_dict.items():
+        for launcher in launchers:
+            # Now we accurately check out those possible collisions
+            if pygame.sprite.collide_mask(ball,launcher):
+                launcher.kill()
+                Explosion(launcher.rect.center,launcher.size/2.0,2*launcher.size)  
+                # Ball survives if shield is on, blows up if it isn't
+                if ball.shield_active == False:
+                    game.it_is_game_over()
                 
     # Has a missile collided with another missile!?
     # I currently don't bother to get a missile to turn on it's shield and bounce off other missiles
     for (miss,missiles) in missileMissileCols_dict.items():
         # Check they are both still in the group, as we may have treated
         # this collision already
-        if game.missileGroup.has([miss,missiles]):
-            for missile in missiles:
+        for missile in missiles:
+            if game.missileGroup.has([miss,missile]):
                 if missile != miss:
                     if pygame.sprite.collide_mask(miss,missile):
                         # Missile should blow up
@@ -752,8 +786,21 @@ while True:
         
         # For now, if two missiles collide, rather than treating each as though they've
         # hit a static object, I'll just make them both blow up.
-    
-    # Has a missile or ball collided with any explosions?
+
+    for (missile,launchers) in missileLauncherCols_dict.items():
+        # Check they are both still in the group, as we may have treated
+        # this collision already
+        if game.missileGroup.has([missile]) and game.launcherGroup.has(launchers):
+            for launcher in launchers:
+                if missile not in launcher.immune_missiles:
+                    if pygame.sprite.collide_mask(miss,missile):
+                        # Missile and launcher should blow up
+                        missile.kill()
+                        Explosion(missile.rect.center,missile.radius,6*missile.radius)    ###
+                        launcher.kill()
+                        Explosion(launcher.rect.center,launcher.size/2.0,2*launcher.size)  
+        
+    # Has a missile, ball or launcher collided with any explosions?
     # In this case, they should be propelled away from the centre of the explosion
     # Perhaps a stronger force should be applied the closer they are to the centre of
     # the explosion
@@ -777,7 +824,13 @@ while True:
                     Explosion(missile.rect.center,missile.radius,6*missile.radius)
                 else:
                     explosion.update_angle_to_explosion(missile)
-                    missile.external_acceleration(100,explosion.angle) # (value,explosion.angle)                
+                    missile.external_acceleration(100,explosion.angle) # (value,explosion.angle)
+
+    for (launcher,explosions) in launcherExplosionCols_dict.items():
+        for explosion in explosions:
+            if pygame.sprite.collide_mask(launcher,explosion):
+                    launcher.kill()
+                    Explosion(launcher.rect.center,launcher.size/2.0,2*launcher.size)                
             
     
 
