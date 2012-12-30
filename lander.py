@@ -469,7 +469,11 @@ class Game:
                 asteroid = Asteroid.asteroids[random.randrange(0,len(Asteroid.asteroids))]
                 # second, pick a random angle in degrees
                 degree = random.randrange(0,360)
-                launcher = Launcher(asteroid,degree,50)
+                # Thirdly, how powerful will the missiles be?
+                accel_magnitude = random.randrange(40,110)
+                # How frequently will it fire missiles?
+                time_spacing = random.randrange(2000,10000)
+                launcher = Launcher(asteroid,degree,50,accel_magnitude,time_spacing)
                 # if launcher coincides with any other asteroids, try again
                 if len(pygame.sprite.spritecollide(launcher,self.asteroidGroup,False)) > 1 or len(pygame.sprite.spritecollide(launcher,self.launcherGroup,False)) > 1:  # launcher etc.
                     launcher.kill()
@@ -513,7 +517,7 @@ class Asteroid(pygame.sprite.Sprite):
 
 class Launcher(pygame.sprite.Sprite):
     
-    def __init__(self,asteroid,degree,size):
+    def __init__(self,asteroid,degree,size,accel_magnitude,time_spacing):
         # A launcher will be a triangle that sits on the surface (maybe a bit beneath the surface, as the base
         # of the triangle will be flat but the asteroid surface will be curved) of an asteroid and will be
         # able to fire missiles.
@@ -534,7 +538,9 @@ class Launcher(pygame.sprite.Sprite):
         self.initial_missile_velocity_unit_vector = ((X-x)*1.0/mod_v,(Y-y)*1.0/mod_v)
         self.rect.center = (X,Y)
         self.image = self.image.convert_alpha()
+        self.accel_magnitude = accel_magnitude
         self.timer = 0
+        self.time_spacing = time_spacing
         self.immune_missiles = {}
         self.size = size
 
@@ -544,10 +550,10 @@ class Launcher(pygame.sprite.Sprite):
         # The initial contact with the missile shouldn't blow up the launcher,
         # but subsequent contact should.
         self.timer += msecs
-        if self.timer > 5000:
+        if self.timer > self.time_spacing:
             self.timer = 0
             # Missile properties below could be properties of the launcher, of course
-            missile = Missile(center=self.rect.center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
+            missile = Missile(center=self.rect.center,fuel=2000,shield=400,accel_magnitude=self.accel_magnitude,radius=10,colour=RED)
             missile.update(1) # To set the shield on initially
             speed = 100
             # Now wish to set an appropriate initial velocity for the missile - in the direction of the launcher
