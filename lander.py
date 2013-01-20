@@ -252,7 +252,7 @@ class Ball(pygame.sprite.Sprite):
         # completely over the landing strip, weve landed.
         if self.rect.centerx < landingStrip.rect.left or self.rect.centerx > landingStrip.rect.right or self.rect.centery > landingStrip.rect.bottom:
             return False
-        if abs(self.x_vel) > 30 or abs(self.y_vel) > 30:
+        if abs(math.sqrt(self.x_vel ** 2 + self.y_vel ** 2)) > landingStrip.maxLandingSpeed:
             return False
         return True
             
@@ -309,7 +309,8 @@ class Missile(Ball):
 
 
     def update_ball_angle_to_missile(self):
-        (x,y) = (game.ball.x - self.rect.centerx,game.ball.y - self.rect.centery)
+        #(x,y) = (game.ball.x - self.rect.centerx,game.ball.y - self.rect.centery)
+        (x,y) = (game.ball.x + game.ball.x_vel - self.rect.centerx,game.ball.y + game.ball.y_vel - self.rect.centery)
         if x == 0:
             #if y == 0:
             #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
@@ -655,12 +656,27 @@ class LandingStrip(pygame.sprite.Sprite):
     def __init__(self,topleft=(0,0),length=30):
         pygame.sprite.Sprite.__init__(self, self.groups)
         self.image = pygame.Surface((length, 10))
+        self.length = length
+        self.maxLandingSpeed = 30
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         pygame.draw.rect(self.image, BLUE, (0,0,length,10))
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.topleft = topleft
+    
+    def update(self):
+        # If the ship is close and moving too fast or not in position, go red
+        # if the ship is close, in right x,y position and moving slow enough, go green
+        # if ship is too far away, go back to normal colour
+        if math.sqrt((game.ball.x - self.rect.center[0]) ** 2 + (game.ball.y - self.rect.center[1]) ** 2) < 100:
+            if abs(math.sqrt(game.ball.x_vel ** 2 + game.ball.y_vel ** 2)) > self.maxLandingSpeed:
+                pygame.draw.rect(self.image,RED,(0,0,self.length,10))
+            else:
+                pygame.draw.rect(self.image,YELLOW,(0,0,self.length,10))
+        else:
+            pygame.draw.rect(self.image,BLUE,(0,0,self.length,10))
+        
         
 
 
@@ -894,6 +910,8 @@ while True:
     game.missileGroup.update(msecs)
     game.textGroup.update()
     game.launcherGroup.update(msecs)
+    game.landingStripGroup.update()
+
 
     
     # draw the window onto the screen
