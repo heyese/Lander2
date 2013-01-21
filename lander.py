@@ -527,7 +527,10 @@ class Launcher(pygame.sprite.Sprite):
         self.image = pygame.Surface((size, size))
         self.image.set_colorkey(BLACK) # make the black background transparent
         pygame.draw.polygon(self.image, (100,100,100), [(0,size),(size/2,0),(size,size)])
+        self.base_image = self.image
         #rotate surf by DEGREE amount degrees
+        self.degree = degree
+        self.size = size
         self.image = pygame.transform.rotate(self.image, degree)
         #get the rect of the rotated surface
         self.rect = self.image.get_rect()
@@ -551,6 +554,7 @@ class Launcher(pygame.sprite.Sprite):
         # The initial contact with the missile shouldn't blow up the launcher,
         # but subsequent contact should.
         self.timer += msecs
+        
         if self.timer > self.time_spacing:
             self.timer = 0
             # Missile properties below could be properties of the launcher, of course
@@ -562,11 +566,32 @@ class Launcher(pygame.sprite.Sprite):
             # Launcher is to be immune to contact with this missile for the first half second
             # Append missile and a timer to a list
             self.immune_missiles[missile] = 0
+        # Update the missile launcher colour
+        self.update_colour()
         # Add msecs to all timers in the immune_missiles list
         for missile in self.immune_missiles.keys():
             self.immune_missiles[missile] += msecs
             if self.immune_missiles[missile] >= 900:
                 del self.immune_missiles[missile]
+                
+    def update_colour(self):
+        # Called by self.update()
+        # Want the launcher to get redder as it gets close to firing rocket.        
+        #Normal colour (Grey) = (100,100,100)
+        #RED = (255, 0, 0)
+        # t=0 -> Grey, t=self.time_spacing -> Red, want an x^2 relationship so it gets red quicker and quicker
+        self.image = self.base_image
+        proportion = float(self.timer)/self.time_spacing
+        GREY = (100,100,100)
+        
+        if proportion > 1:
+            colour = list(RED)
+        else:
+            colour = [ (GREY[i] + int((RED[i] - GREY[i]) * (proportion ** 2))) for i in [0,1,2] ]
+        pygame.draw.polygon(self.image, colour, [(0,self.size),(self.size/2,0),(self.size,self.size)])
+        self.image = pygame.transform.rotate(self.image, self.degree)
+        
+        
         
 class Explosion(pygame.sprite.Sprite):
     explosions = []
