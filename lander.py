@@ -793,9 +793,19 @@ while True:
                     # Remove missile from all groups and have an explosion
                     missile.kill()
                     Explosion(missile.rect.center,missile.radius,6*missile.radius)
-                else:
-                    # Missile is colliding with it's shield on ...
-                    missile.fixed_collision((x,y))
+                else:                 
+                    # There's a bug where, due to the land shape, missiles can kind of be funnelled into the ground and get stuck there.
+                    # So if there's not only a collision but also the centre of the missile is within the static solid, it explodes
+                    # whether it's shield is up or not
+                    if item.rect.collidepoint(missile.rect.center):
+                        if item.mask.get_at((missile.rect.centerx - item.rect.left,missile.rect.centery - item.rect.top)):
+                            missile.kill()
+                            Explosion(missile.rect.center,missile.radius,6*missile.radius)
+                        else:
+                            missile.fixed_collision((x,y))
+                    else:
+                        # Missile is colliding in a normal way (ie. it's centre point is not within the item rect) with it's shield on ...
+                        missile.fixed_collision((x,y))
 
     # Has a missile collided with the ball!?
     for (ball,missiles) in ballMissileCols_dict.items():
