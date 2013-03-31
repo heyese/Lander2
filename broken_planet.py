@@ -97,7 +97,8 @@ class Planet(pygame.sprite.Sprite):
             #    This is to make sure our new line does keep moving away from the centre of the circle
             # 2b) Choose whether this angle will be measured clockwise or anti-clockwise from line from centre to current point
             #    Perhaps we should ensure we go one way, then the other, etc.
-            angle = random.randrange(90)
+            if self.points == [self.planet_centre]: angle = random.randrange(180)
+            else: angle = random.randrange(90)
             self.orientation = -1 * self.orientation
             print "distance, angle and orientation are %s,%s,%s" % (distance, angle, self.orientation)      
             
@@ -142,8 +143,11 @@ class Planet(pygame.sprite.Sprite):
             
             print "a,b,c are %s,%s,%s" % (a,b,c)
             # Solutions for x are : (-b +- (b^2 -4ac)^(1/2))/2a - I take bigger one.
-            (x1,x2) = ((-b + math.sqrt(b**2 - 4*a*c))/2*a,(-b - math.sqrt(b**2 - 4*a*c))/2*a)
-            print "solutions for x are %s,%s" % (x1,x2)
+            if b**2 -4*a*c < 0:
+                x1 = -b/2*a
+            else:
+                (x1,x2) = ((-b + math.sqrt(b**2 - 4*a*c))/2*a,(-b - math.sqrt(b**2 - 4*a*c))/2*a)
+            print "solution for x is %s" % (x1)
             # So OB is OA + x*unit_AB
             OB = [ OA[i] + x1 * unit_AB[i] for i in [0,1] ]
             print "OB is %s" % str(OB)
@@ -237,6 +241,10 @@ while True:
     if pygame.mouse.get_pressed()[0] == True:
         # Earthquake !!!
         planetGroup.update(msecs)
+    if pygame.mouse.get_pressed()[2] == True:
+        # Earthquake !!!
+        planetGroup.remove(planet)
+        planet = Planet((600,300),100)
     
     
     
