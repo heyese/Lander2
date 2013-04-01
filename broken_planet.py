@@ -27,30 +27,32 @@ background = background.convert()  # Convert Surface to make blitting faster
 windowSurface.blit(background, (0, 0))
 
 
+class Earthquake():
+    '''An earthquake is simply a list of points'''
+    def __init__(self,planet_centre,planet_radius,planet_life,starting_point,orientation):
+        self.planet_centre = planet_centre
+        self.planet_radius = planet_radius
+        self.initial_planet_life = planet_life
+        self.points = [starting_point]
+        self.target_point = starting_point
+        self.current_point = starting_point
+        #self.orientation = [-1,1][random.randrange(2)]
+        self.orientation = orientation
 
-class Planet(pygame.sprite.Sprite):
-    def __init__(self,(x,y),radius):
-        pygame.sprite.Sprite.__init__(self, self.groups)
-        self.image = pygame.Surface((2*radius, 2*radius))
-        self.radius = radius
-        self.image.set_colorkey(BLACK)
-        self.rect = self.image.get_rect()
-        self.planet_centre = self.rect.center
-        self.image_copy = self.image.copy()
-        pygame.draw.circle(self.image, WHITE, self.rect.center, radius, 0)
+    def update(self,planet_life):
+        # Are we at the end of a line - if so, choose a new point
+        if self.current_point == self.target_point:
+            self.points.append(self.target_point)
+            self.orientation = -1 * self.orientation
+            self.target_point = self.next_target_point(self.target_point,self.planet_centre,self.planet_radius,self.orientation)
+            print "new target_point is %s" % str(self.target_point)
 
-        self.mask = pygame.mask.from_surface(self.image)
-        self.points = []
-        self.current_point = self.planet_centre
-        self.target_point = self.planet_centre
-        self.original_life = 300
-        self.current_life = self.original_life
-        self.orientation = [-1,1][random.randrange(2)]
-        self.rect.center = (x,y)
-
+        # Calculate the current point we should be drawing to        
+        self.current_point = self.next_current_point(planet_life,self.initial_planet_life,self.planet_radius,self.planet_centre,self.points[-1],self.target_point)
         
-    def translate(self,(x,y)):
-        return (x - self.rect.topleft[0],y - self.rect.topleft[1])
+        # Return the list of points which draw out the earthquake
+        return self.points + [self.current_point]
+        
     def next_target_point(self,current_target_point,planet_centre,planet_radius,orientation):
         # choose a new target_point:
         #  * in the circle (inc. on edge)
@@ -134,7 +136,6 @@ class Planet(pygame.sprite.Sprite):
             return sum([ v1[i]*v2[i] for i in [0,1] ])
             
         mod_OP = (1 - float(current_life) / original_life) * planet_radius
-        print "mod_OP is %s" % str(mod_OP)
         
         O = planet_centre
         A = last_point
@@ -143,15 +144,7 @@ class Planet(pygame.sprite.Sprite):
         AB = tuple([ B[i] - A[i] for i in [0,1] ]) # vecor from last corner point to next target point
         OB = tuple([ B[i] - O[i] for i in [0,1] ]) # vector from centre to next point
         
-        print "O is %s" % str(O)
-        print "A is %s" % str(A)
-        print "B is %s" % str(B)
-        print "OA is %s" % str(OA)
-        print "AB is %s" % str(AB)
-        print "OB is %s" % str(OB)
-        
         # If the next_point is already not far enough away from the centre, we jump straight to it
-        print "mod_OP is %s and mod_OB is %s" % (str(mod_OP),str(mod(OB)))
         if mod_OP > mod(OB):
             P = B
         else:
@@ -159,20 +152,37 @@ class Planet(pygame.sprite.Sprite):
             # (OA + xAB) dot (OA + xAB) = mod_OP ^ 2
             # ax^2 + bx + c = 0 where:
             (a,b,c) = (mod(AB)**2, 2*dot(OA,AB), mod(OA)**2 - mod_OP**2)
-            print "(a,b,c) are (%s,%s,%s)" % (a,b,c)
+            #print "(a,b,c) are (%s,%s,%s)" % (a,b,c)
             
             #  Solutions for x are : (-b +- (b^2 -4ac)^(1/2))/2a
             if b**2 - 4*a*c < 0:
-                print "b^2 -4ac is %s" % b**2 - 4*a*c
+                print "b^2 -4ac is %f" % (b**2 - 4*a*c)
                 x = -b/(2*a)
             else:
                 x = (-b + math.sqrt(b**2 - 4*a*c))/(2*a)
-                print "(-b + (b^2 -4ac)^(1/2))/2a is (%f + (%f^2 -4*%f*%f)^(1/2))/2*%s" % (-b,b,a,c,a) 
-            print "x is %s" % str(x)
             OP = tuple([ OA[i] + x*AB[i] for i in [0,1] ])
             P = tuple([ int(O[i] + OP[i]) for i in [0,1] ])
-            print "P is %s and mod_OP is %s" % (str(P),str(mod(OP)))
         return P
+        
+class Planet(pygame.sprite.Sprite):
+    def __init__(self,(x,y),radius):
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.image = pygame.Surface((2*radius, 2*radius))
+        self.radius = radius
+        self.image.set_colorkey(BLACK)
+        self.rect = self.image.get_rect()
+        self.planet_centre = self.rect.center
+        pygame.draw.circle(self.image, WHITE, self.rect.center, radius, 0)
+
+        self.mask = pygame.mask.from_surface(self.image)
+        self.original_life = 300
+        self.current_life = self.original_life
+        
+        self.rect.center = (x,y)
+        self.earthquakes = []
+        self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.original_life,self.planet_centre,[-1,1][random.randrange(2)]))
+        self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.original_life,self.planet_centre,[-1,1][random.randrange(2)]))
+        
 
             
     def update(self,msecs):
@@ -188,21 +198,12 @@ class Planet(pygame.sprite.Sprite):
         # Planet is being destroyed
         self.current_life = self.current_life - 1  # Actually, the explosion function should decrease this - eg. if in contact with two explosions, life you decrease at twice rate
         print "self.current_life is %s" % self.current_life
-        print "self.points is %s" % str(self.points)
-
-        # Are we at the end of a line - if so, choose a new point
-        if self.current_point == self.target_point:
-            self.points.append(self.target_point)
-            self.orientation = -1 * self.orientation
-            self.target_point = self.next_target_point(self.target_point,self.planet_centre,self.radius,self.orientation)
-            print "new target_point is %s" % str(self.target_point)
-
-        # Calculate the current point we should be drawing to
-        self.current_point = self.next_current_point(self.current_life,self.original_life,self.radius,self.planet_centre,self.points[-1],self.target_point)
         
         
-        # Draw the earthquake
-        pygame.draw.lines(self.image, RED, False, self.points + [self.current_point],4)
+        for quake in self.earthquakes:
+            points = quake.update(self.current_life)
+            # Draw the earthquake
+            pygame.draw.lines(self.image, RED, False, points,4)
 
 
         
