@@ -33,27 +33,29 @@ class Earthquake():
         self.planet_centre = planet_centre
         self.planet_radius = planet_radius
         self.initial_planet_life = planet_life
-        self.points = [starting_point]
+        self.points = []
         self.target_point = starting_point
         self.current_point = starting_point
         #self.orientation = [-1,1][random.randrange(2)]
         self.orientation = orientation
+        self.initial_distance_to_edge = self.planet_radius - math.sqrt(sum([ (starting_point[i] - planet_centre[i])**2 for i in [0,1] ]))
 
     def update(self,planet_life):
         # Are we at the end of a line - if so, choose a new point
+        print "self.current_point is %s, self.target_point is %s" % (str(self.current_point),str(self.target_point))
         if self.current_point == self.target_point:
             self.points.append(self.target_point)
             self.orientation = -1 * self.orientation
-            self.target_point = self.next_target_point(self.target_point,self.planet_centre,self.planet_radius,self.orientation)
+            self.target_point = self.next_target_point(self.target_point,self.planet_centre,self.points[0],self.planet_radius,self.orientation)
             print "new target_point is %s" % str(self.target_point)
 
         # Calculate the current point we should be drawing to        
-        self.current_point = self.next_current_point(planet_life,self.initial_planet_life,self.planet_radius,self.planet_centre,self.points[-1],self.target_point)
+        self.current_point = self.next_current_point(planet_life,self.initial_planet_life,self.planet_radius,self.planet_centre,self.points[0],self.points[-1],self.target_point)
         
         # Return the list of points which draw out the earthquake
         return self.points + [self.current_point]
         
-    def next_target_point(self,current_target_point,planet_centre,planet_radius,orientation):
+    def next_target_point(self,current_target_point,planet_centre,initial_point,planet_radius,orientation):
         # choose a new target_point:
         #  * in the circle (inc. on edge)
         #  * calculate distance from centre of current target point and say this is x percent of full planet radius.  Then new point
@@ -63,14 +65,18 @@ class Earthquake():
         #    Point is that this means no point on the new line will have a shorter distance to circle centre than current point
         
         # Choose distance from centre of new point
-        distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - planet_centre[i]) ** 2 for i in [0,1] ]))
-        distance_proportion = float(distance_of_current_point) / planet_radius
+        #distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - planet_centre[i]) ** 2 for i in [0,1] ]))
+        #distance_proportion = float(distance_of_current_point) / planet_radius
+        
+        distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - initial_point[i]) ** 2 for i in [0,1] ]))
+        distance_proportion = float(distance_of_current_point) / self.initial_distance_to_edge
+        
         if distance_proportion + 0.1 >= 1:
             new_distance_proportion = 1
         else:
             #new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),100)/100.0
             new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),min([math.floor((distance_proportion + 0.5)*100),100]))/100.0
-        distance = new_distance_proportion * planet_radius
+        distance = new_distance_proportion * self.initial_distance_to_edge
 
         
         # Let's see if we can have a pure math way of getting the point
@@ -118,6 +124,7 @@ class Earthquake():
         
         # Solutions for x are : (-b +- (b^2 -4ac)^(1/2))/2a - I take bigger one.
         if b**2 -4*a*c < 0:
+            print "No real solutions in next_target_point - b^2 -4ac = %f" % b**2 -4*a*c
             x1 = -b/2*a
         else:
             (x1,x2) = ((-b + math.sqrt(b**2 - 4*a*c))/2*a,(-b - math.sqrt(b**2 - 4*a*c))/2*a)
@@ -126,7 +133,7 @@ class Earthquake():
         B = tuple([ int(planet_centre[i] + OB[i]) for i in [0,1] ])
         return B
      
-    def next_current_point(self,current_life,original_life,planet_radius,planet_centre,last_point,next_point):
+    def next_current_point(self,current_life,original_life,planet_radius,planet_centre,initial_point,last_point,next_point):
         # Calculate next point P
         # This is the point P that lies on the line 'points[-1] -> target_point' and
         # whose distance from the centre is proportional to the life of the planet.
@@ -134,10 +141,11 @@ class Earthquake():
             return math.sqrt(sum([ vector[i]**2 for i in [0,1] ]))
         def dot(v1,v2):
             return sum([ v1[i]*v2[i] for i in [0,1] ])
-            
-        mod_OP = (1 - float(current_life) / original_life) * planet_radius
         
-        O = planet_centre
+        # Distance from initial point to 
+        mod_OP = (1 - float(current_life) / original_life) * self.initial_distance_to_edge
+        if mod_OP == 0: return last_point
+        O = initial_point  # this should be earthquake starting point
         A = last_point
         B = next_point
         OA = tuple([ A[i] - O[i] for i in [0,1] ]) # vector from centre to the last (corner) point of earthquake
@@ -145,8 +153,12 @@ class Earthquake():
         OB = tuple([ B[i] - O[i] for i in [0,1] ]) # vector from centre to next point
         
         # If the next_point is already not far enough away from the centre, we jump straight to it
-        if mod_OP > mod(OB):
+        if mod_OP >= mod(OB):
             P = B
+        if mod_OP <= mod(OA):
+            # This shouldn't happen, but there's some rounding somewhere, perhaps
+            print "Set P = A since mod_OA was %s and mod_OA was %s" % (str(mod_OP),str(mod(OA)))
+            P = A
         else:
             # solving |OA + xAB| = mod_OP
             # (OA + xAB) dot (OA + xAB) = mod_OP ^ 2
@@ -156,7 +168,17 @@ class Earthquake():
             
             #  Solutions for x are : (-b +- (b^2 -4ac)^(1/2))/2a
             if b**2 - 4*a*c < 0:
+                # Need to work out why I'm getting unreal roots to this
                 print "b^2 -4ac is %f" % (b**2 - 4*a*c)
+                print "O is %s" % str(O)
+                print "OA is %s" % str(OA)
+                print "AB is %s" % str(AB)
+                print "OB is %s" % str(OB)
+                print "mod_OA is %s" % str(mod(OA))
+                print "mod_OP is %s" % str(mod_OP)
+                print "mod_OB is %s" % str(mod(OB))
+                print "(a,b,c) are (%s,%s,%s)" % (str(a),str(b),str(c))
+                sys.exit()
                 x = -b/(2*a)
             else:
                 x = (-b + math.sqrt(b**2 - 4*a*c))/(2*a)
@@ -180,9 +202,7 @@ class Planet(pygame.sprite.Sprite):
         
         self.rect.center = (x,y)
         self.earthquakes = []
-        self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.original_life,self.planet_centre,[-1,1][random.randrange(2)]))
-        self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.original_life,self.planet_centre,[-1,1][random.randrange(2)]))
-        
+        self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,self.planet_centre,[-1,1][random.randrange(2)]))        
 
             
     def update(self,msecs):
@@ -198,12 +218,25 @@ class Planet(pygame.sprite.Sprite):
         # Planet is being destroyed
         self.current_life = self.current_life - 1  # Actually, the explosion function should decrease this - eg. if in contact with two explosions, life you decrease at twice rate
         print "self.current_life is %s" % self.current_life
+        # Every so often, if planet is destroyed a bit, another earthquake starts
+        # Say we want an average of five earthquakes per planet?
+        # And that this function gets called every time planet loses 1 health.
+        if random.randrange(self.original_life / 5) == 0 and self.current_life != 0:
+            print "New earthquake!!"
+            # Pick a random point on an existing earthquake or the centre
+            starting_points = []
+            for quake in self.earthquakes:
+                starting_points.extend(quake.points)
+            starting_points = list(set(starting_points))
+            starting_point = starting_points[random.randrange(len(starting_points))]
+            self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,starting_point,[-1,1][random.randrange(2)]))
+
         
-        
-        for quake in self.earthquakes:
-            points = quake.update(self.current_life)
-            # Draw the earthquake
-            pygame.draw.lines(self.image, RED, False, points,4)
+        if self.current_life != 0:
+            for quake in self.earthquakes:
+                points = quake.update(self.current_life)
+                # Draw the earthquake
+                pygame.draw.lines(self.image, RED, False, points,4)
 
 
         
