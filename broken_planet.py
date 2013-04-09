@@ -76,6 +76,7 @@ class Earthquake():
         else:
             #new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),100)/100.0
             new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),min([math.floor((distance_proportion + 0.5)*100),100]))/100.0
+            print "New distance proportion is %s" % new_distance_proportion
         distance = new_distance_proportion * self.initial_distance_to_edge
 
         
@@ -124,7 +125,7 @@ class Earthquake():
         
         # Solutions for x are : (-b +- (b^2 -4ac)^(1/2))/2a - I take bigger one.
         if b**2 -4*a*c < 0:
-            print "No real solutions in next_target_point - b^2 -4ac = %f" % b**2 -4*a*c
+            print "No real solutions in next_target_point - b^2 -4ac = %f" % (b**2 - 4*a*c)
             x1 = -b/2*a
         else:
             (x1,x2) = ((-b + math.sqrt(b**2 - 4*a*c))/2*a,(-b - math.sqrt(b**2 - 4*a*c))/2*a)
@@ -152,10 +153,13 @@ class Earthquake():
         AB = tuple([ B[i] - A[i] for i in [0,1] ]) # vecor from last corner point to next target point
         OB = tuple([ B[i] - O[i] for i in [0,1] ]) # vector from centre to next point
         
-        # If the next_point is already not far enough away from the centre, we jump straight to it
-        if mod_OP >= mod(OB):
+        # Bit of a hack - if I've gone too far, I just reset
+        if mod(OB) <= mod(OA):
             P = B
-        if mod_OP <= mod(OA):
+        # If the next_point is already not far enough away from the centre, we jump straight to it
+        elif mod_OP >= mod(OB):
+            P = B
+        elif mod_OP <= mod(OA):
             # This shouldn't happen, but there's some rounding somewhere, perhaps
             print "Set P = A since mod_OA was %s and mod_OA was %s" % (str(mod_OP),str(mod(OA)))
             P = A
@@ -221,6 +225,7 @@ class Planet(pygame.sprite.Sprite):
         # Every so often, if planet is destroyed a bit, another earthquake starts
         # Say we want an average of five earthquakes per planet?
         # And that this function gets called every time planet loses 1 health.
+        
         if random.randrange(self.original_life / 5) == 0 and self.current_life != 0:
             print "New earthquake!!"
             # Pick a random point on an existing earthquake or the centre
@@ -228,9 +233,9 @@ class Planet(pygame.sprite.Sprite):
             for quake in self.earthquakes:
                 starting_points.extend(quake.points)
             starting_points = list(set(starting_points))
-            starting_point = starting_points[random.randrange(len(starting_points))]
+            starting_point = self.planet_centre #starting_points[random.randrange(len(starting_points))]
             self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,starting_point,[-1,1][random.randrange(2)]))
-
+        
         
         if self.current_life != 0:
             for quake in self.earthquakes:
