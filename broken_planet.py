@@ -68,16 +68,19 @@ class Earthquake():
         #distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - planet_centre[i]) ** 2 for i in [0,1] ]))
         #distance_proportion = float(distance_of_current_point) / planet_radius
         
-        distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - initial_point[i]) ** 2 for i in [0,1] ]))
-        distance_proportion = float(distance_of_current_point) / self.initial_distance_to_edge
+        print "current_target_point = %s, planet_centre = %s, initial_point = %s, planet_radius = %s" % (current_target_point,planet_centre,initial_point,planet_radius)
+        
+        distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - planet_centre[i]) ** 2 for i in [0,1] ]))
+        distance_proportion = float(distance_of_current_point) / planet_radius
         
         if distance_proportion + 0.1 >= 1:
             new_distance_proportion = 1
         else:
             #new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),100)/100.0
             new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),min([math.floor((distance_proportion + 0.5)*100),100]))/100.0
-            print "New distance proportion is %s" % new_distance_proportion
-        distance = new_distance_proportion * self.initial_distance_to_edge
+        print "Old distance proportion was %s" % distance_proportion
+        print "New distance proportion is %s" % new_distance_proportion
+        distance = new_distance_proportion * planet_radius
 
         
         # Let's see if we can have a pure math way of getting the point
@@ -108,14 +111,19 @@ class Earthquake():
             n1 = tuple([ OA[i]/mod_OA for i in [0,1] ])
         
         
-        # n2 is obtained by n1 by rotating 90 degrees.  ie. using the matrix [ [0,1],[-1,0] ]
-        if orientation == 1: n2 = tuple([n1[1],-n1[0]])
-        else: n2 = tuple([-n1[1],n1[0]])
+        # n2 is obtained by n1 by rotating 90 degrees.  ie. using the matrix [ [0,-1],[1,0] ]
+        # This confused me at first - it's because pygame gives the (0,0) coordinate at the top left.
+        if orientation == 1: n2 = tuple([-n1[1],n1[0]])
+        else: n2 = tuple([n1[1],-n1[0]])
         
         # Unit vector in direction of AB is:
         #unit_AB = cos(angle * math.pi/180.0)n1 + sin(angle * math.pi/180.0)n2
         unit_AB = tuple([ math.cos(angle * math.pi/180.0)*n1[i] + math.sin(angle * math.pi/180.0)*n2[i] for i in [0,1] ])
-
+        
+        print "angle is %s" % angle
+        print "n1 is %s" % str(n1)
+        print "n2 is %s" % str(n2)
+        
         # Now, OA + x * unit_AB = OB and |OA + x * unit_AB| = |OB| = new_distance, where x > 0
         # -> solve for x
         # get a quadratic equation, ax^2 + bx + c = 0, where:
@@ -143,15 +151,23 @@ class Earthquake():
         def dot(v1,v2):
             return sum([ v1[i]*v2[i] for i in [0,1] ])
         
-        # Distance from initial point to 
-        mod_OP = (1 - float(current_life) / original_life) * self.initial_distance_to_edge
-        if mod_OP == 0: return last_point
-        O = initial_point  # this should be earthquake starting point
+        # When life is proportion life_proportion of original life (life at start of earthquake),
+        # mod_OP = mod_start_point + (1 - life_proportion) * (planet_radius - mod_start_point)
+        life_proportion = float(current_life) / original_life
+        
+        
+        
+        O = planet_centre
+        I = initial_point # start of earthquake
         A = last_point
         B = next_point
+        OI = tuple([ I[i] - O[i] for i in [0,1] ])
         OA = tuple([ A[i] - O[i] for i in [0,1] ]) # vector from centre to the last (corner) point of earthquake
         AB = tuple([ B[i] - A[i] for i in [0,1] ]) # vecor from last corner point to next target point
         OB = tuple([ B[i] - O[i] for i in [0,1] ]) # vector from centre to next point
+        mod_OP = mod(OI) + (1-life_proportion)*(planet_radius - mod(OI))
+        if mod_OP == 0: return last_point
+
         
         # Bit of a hack - if I've gone too far, I just reset
         if mod(OB) <= mod(OA):
@@ -161,7 +177,7 @@ class Earthquake():
             P = B
         elif mod_OP <= mod(OA):
             # This shouldn't happen, but there's some rounding somewhere, perhaps
-            print "Set P = A since mod_OA was %s and mod_OA was %s" % (str(mod_OP),str(mod(OA)))
+            print "Set P = A since mod_OP was %s and mod_OA was %s" % (str(mod_OP),str(mod(OA)))
             P = A
         else:
             # solving |OA + xAB| = mod_OP
@@ -207,6 +223,7 @@ class Planet(pygame.sprite.Sprite):
         self.rect.center = (x,y)
         self.earthquakes = []
         self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,self.planet_centre,[-1,1][random.randrange(2)]))        
+        #self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,(150,100),[-1,1][random.randrange(2)]))        
 
             
     def update(self,msecs):
@@ -220,7 +237,11 @@ class Planet(pygame.sprite.Sprite):
         # But maybe all reaching the edge at the same time, or maybe all increasing at same rate with planet being destroyed when first reaches the edge.
         
         # Planet is being destroyed
-        self.current_life = self.current_life - 1  # Actually, the explosion function should decrease this - eg. if in contact with two explosions, life you decrease at twice rate
+        if self.current_life > 0:
+            self.current_life = self.current_life - 1
+            # Actually, the explosion function should decrease this - eg. if in contact with two explosions, life will decrease at twice rate
+        else: return
+        
         print "self.current_life is %s" % self.current_life
         # Every so often, if planet is destroyed a bit, another earthquake starts
         # Say we want an average of five earthquakes per planet?
@@ -233,8 +254,11 @@ class Planet(pygame.sprite.Sprite):
             for quake in self.earthquakes:
                 starting_points.extend(quake.points)
             starting_points = list(set(starting_points))
-            starting_point = self.planet_centre #starting_points[random.randrange(len(starting_points))]
+            starting_point = starting_points[random.randrange(len(starting_points))]
+            #starting_point = (150,100) #starting_points[random.randrange(len(starting_points))]
+
             self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,starting_point,[-1,1][random.randrange(2)]))
+        
         
         
         if self.current_life != 0:
