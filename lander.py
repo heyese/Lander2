@@ -277,19 +277,13 @@ class Ball(pygame.sprite.Sprite):
         if mod_v == 0: return # 
         angle = math.acos(v_dot_e2/mod_v)
         e1 = ((v[0] - mod_v*math.cos(angle)*e2[0])/(mod_v*math.sin(angle)),(v[1] - mod_v*math.cos(angle)*e2[1])/(mod_v*math.sin(angle)))
-        #print "Asteroid centre is : (%s,%s)" % (object.rect.centerx,object.rect.centery)
-        #print "Asteroid centre as calculated by using e2 is : (%s,%s)" % (self.rect.centerx + mod*e2[0],self.rect.centery + mod*e2[1])
-        #print "mod e1 is %s" % math.sqrt(e1[0]**2 + e1[1]**2)
-        #print "e1 dot e2 is %s" % (e1[0]*e2[0] + e1[1]*e2[1])
-        #print "old V vector is : %s" % str(v)
-        #print "old V using e1 and e2 is : (%0.1f, %0.1f)" % ((mod_v*math.cos(angle)*e2[0] + mod_v*math.sin(angle)*e1[0]),(mod_v*math.cos(angle)*e2[1] + mod_v*math.sin(angle)*e1[1]))
 
         # When we hit, the e2 component (which is the resolved bit pointing directly at the asteroid) is reversed
         # It may be that this is a second collision in a row (ie. we've not yet quite escaped the asteroid after the first collision)
         # in which case I don't want to reverse e2.  
         # Since e2 is pointing from the ball to the asteroid, I simply test whether it's coefficient is positive or negative and don't reverse
         # it if it's negative.
-        #v_wrt_e1_and_e2 = ((mod_v*math.cos(angle)*e2[0] + mod_v*math.sin(angle)*e1[0]),(mod_v*math.cos(angle)*e2[1] + mod_v*math.sin(angle)*e1[1]))
+
         new_v = ((mod_v*math.sin(angle)*e1[0] - mod_v*math.cos(angle)*e2[0]),(mod_v*math.sin(angle)*e1[1] - mod_v*math.cos(angle)*e2[1]))
         if mod_v * math.cos(angle) >= 0:
             (self.x_vel,self.y_vel) = (new_v[0],new_v[1])
@@ -407,8 +401,8 @@ class Game:
     def next_level(self):
         self.level += 1
         self.score += 100
-        self.no_of_asteroids += 3
-        self.no_of_launchers += 3
+        self.no_of_asteroids += 2
+        self.no_of_launchers += 2
         self.level_animation()
         screen.fill(BLACK)
         
@@ -459,8 +453,10 @@ class Game:
         
         for i in range(self.no_of_asteroids):
             (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
-            rad = random.randrange(20,80)
-            asteroid = Asteroid(center=(x,y),radius=rad)
+            (min_rad,max_rad) = (50,120)
+            rad = random.randrange(min_rad,max_rad)
+            initial_life = int(200 + 200 * (rad - min_rad)/(max_rad - min_rad))
+            asteroid = Asteroid(center=(x,y),radius=rad,life=initial_life)
         # Create the missile launchers
         for i in range(self.no_of_launchers):
             # I want to be sure the launchers are in the open, so I keep trying until I get it right
@@ -503,7 +499,7 @@ class Game:
 class Asteroid(pygame.sprite.Sprite):
     
     asteroids = []
-    def __init__(self,center=(0,0),radius=10):
+    def __init__(self,center=(0,0),radius=10,life=200):
         pygame.sprite.Sprite.__init__(self, self.groups)
         Asteroid.asteroids.append(self) # add this instance to the class list
         self.image = pygame.Surface((2*radius, 2*radius))
@@ -515,29 +511,48 @@ class Asteroid(pygame.sprite.Sprite):
         self.radius = radius
         self.planet_centre = self.rect.center
         self.rect.center = center
-        self.original_life = 200
+        self.original_life = life
         self.current_life = self.original_life
         self.earthquakes = []
         self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,self.planet_centre,[-1,1][random.randrange(2)]))
 
     def update(self,msecs):
         
-        if random.randrange(self.original_life) == 0 and self.current_life != 0:
-            print "New earthquake!!"
-            # Pick a random point on an existing earthquake or the centre
-            starting_points = []
-            for quake in self.earthquakes:
-                starting_points.extend(quake.points)
-            starting_points = list(set(starting_points))
-            starting_point = self.planet_centre #starting_points[random.randrange(len(starting_points))]
-            self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,starting_point,[-1,1][random.randrange(2)]))
-        
-        
-        if self.current_life != 0:
+        if self.current_life > 0:
             for quake in self.earthquakes:
                 points = quake.update(self.current_life)
+                # Want the colour to fade from black to red
+                proportion = (1 - float(self.current_life) / self.original_life)
+                X = int(proportion * 255)
+                COLOUR = (X,0,0)
                 # Draw the earthquake
-                pygame.draw.lines(self.image, BLACK, False, points,1)
+                pygame.draw.lines(self.image, COLOUR, False, points,1)
+                
+    def lose_life(self,x):
+        self.current_life = self.current_life - x
+        # Also want to randomly create new earthquakes / make existing earthquakes branch out
+        # This function will be called roughly self.original_life times (as each hurt is -1).
+        # Quite want big asteroids, which have more life, to have more earthquakes
+        if random.randrange(35) == 0:           
+            # Any vertex of an existing earthquake, but turn opposite direction.
+            developed_quakes = [ q for q in self.earthquakes if len(q.points) > 1 ]
+            if len(developed_quakes) == 0:
+                # If there are no earthquakes with a non-central vertex, new earthquake
+                # has to start at the centre again
+                starting_point = self.planet_centre
+            else:
+                if random.randrange(2) == 0:
+                    starting_point = self.planet_centre
+                else:
+                    quake = developed_quakes[random.randrange(len(developed_quakes))]
+                    point_number = random.randrange(1,len(quake.points))
+                    starting_point = quake.points[point_number]
+                    orientation = quake.orientation * (-1)**(len(quake.points) - point_number + 1)
+            if starting_point == self.planet_centre:
+                orientation = [-1,1][random.randrange(2)]
+            self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,starting_point,orientation))
+        
+        
 
 class Earthquake():
     '''An earthquake is simply a list of points'''
@@ -554,12 +569,10 @@ class Earthquake():
 
     def update(self,planet_life):
         # Are we at the end of a line - if so, choose a new point
-        #print "self.current_point is %s, self.target_point is %s" % (str(self.current_point),str(self.target_point))
         if self.current_point == self.target_point:
             self.points.append(self.target_point)
             self.orientation = -1 * self.orientation
             self.target_point = self.next_target_point(self.target_point,self.planet_centre,self.points[0],self.planet_radius,self.orientation)
-            print "new target_point is %s" % str(self.target_point)
 
         # Calculate the current point we should be drawing to        
         self.current_point = self.next_current_point(planet_life,self.initial_planet_life,self.planet_radius,self.planet_centre,self.points[0],self.points[-1],self.target_point)
@@ -580,16 +593,16 @@ class Earthquake():
         #distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - planet_centre[i]) ** 2 for i in [0,1] ]))
         #distance_proportion = float(distance_of_current_point) / planet_radius
         
-        distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - initial_point[i]) ** 2 for i in [0,1] ]))
-        distance_proportion = float(distance_of_current_point) / self.initial_distance_to_edge
+        
+        distance_of_current_point = math.sqrt(sum([ (current_target_point[i] - planet_centre[i]) ** 2 for i in [0,1] ]))
+        distance_proportion = float(distance_of_current_point) / planet_radius
         
         if distance_proportion + 0.1 >= 1:
             new_distance_proportion = 1
         else:
             #new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),100)/100.0
             new_distance_proportion = random.randrange(math.floor((distance_proportion + 0.1)*100),min([math.floor((distance_proportion + 0.5)*100),100]))/100.0
-            print "New distance proportion is %s" % new_distance_proportion
-        distance = new_distance_proportion * self.initial_distance_to_edge
+        distance = new_distance_proportion * planet_radius
 
         
         # Let's see if we can have a pure math way of getting the point
@@ -620,14 +633,15 @@ class Earthquake():
             n1 = tuple([ OA[i]/mod_OA for i in [0,1] ])
         
         
-        # n2 is obtained by n1 by rotating 90 degrees.  ie. using the matrix [ [0,1],[-1,0] ]
-        if orientation == 1: n2 = tuple([n1[1],-n1[0]])
-        else: n2 = tuple([-n1[1],n1[0]])
+        # n2 is obtained by n1 by rotating 90 degrees.  ie. using the matrix [ [0,-1],[1,0] ]
+        # This confused me at first - it's because pygame gives the (0,0) coordinate at the top left.
+        if orientation == 1: n2 = tuple([-n1[1],n1[0]])
+        else: n2 = tuple([n1[1],-n1[0]])
         
         # Unit vector in direction of AB is:
         #unit_AB = cos(angle * math.pi/180.0)n1 + sin(angle * math.pi/180.0)n2
         unit_AB = tuple([ math.cos(angle * math.pi/180.0)*n1[i] + math.sin(angle * math.pi/180.0)*n2[i] for i in [0,1] ])
-
+        
         # Now, OA + x * unit_AB = OB and |OA + x * unit_AB| = |OB| = new_distance, where x > 0
         # -> solve for x
         # get a quadratic equation, ax^2 + bx + c = 0, where:
@@ -655,15 +669,23 @@ class Earthquake():
         def dot(v1,v2):
             return sum([ v1[i]*v2[i] for i in [0,1] ])
         
-        # Distance from initial point to 
-        mod_OP = (1 - float(current_life) / original_life) * self.initial_distance_to_edge
-        if mod_OP == 0: return last_point
-        O = initial_point  # this should be earthquake starting point
+        # When life is proportion life_proportion of original life (life at start of earthquake),
+        # mod_OP = mod_start_point + (1 - life_proportion) * (planet_radius - mod_start_point)
+        life_proportion = float(current_life) / original_life
+        
+        
+        
+        O = planet_centre
+        I = initial_point # start of earthquake
         A = last_point
         B = next_point
+        OI = tuple([ I[i] - O[i] for i in [0,1] ])
         OA = tuple([ A[i] - O[i] for i in [0,1] ]) # vector from centre to the last (corner) point of earthquake
         AB = tuple([ B[i] - A[i] for i in [0,1] ]) # vecor from last corner point to next target point
         OB = tuple([ B[i] - O[i] for i in [0,1] ]) # vector from centre to next point
+        mod_OP = mod(OI) + (1-life_proportion)*(planet_radius - mod(OI))
+        if mod_OP == 0: return last_point
+
         
         # Bit of a hack - if I've gone too far, I just reset
         if mod(OB) <= mod(OA):
@@ -673,14 +695,13 @@ class Earthquake():
             P = B
         elif mod_OP <= mod(OA):
             # This shouldn't happen, but there's some rounding somewhere, perhaps
-            print "Set P = A since mod_OA was %s and mod_OA was %s" % (str(mod_OP),str(mod(OA)))
+            print "Set P = A since mod_OP was %s and mod_OA was %s" % (str(mod_OP),str(mod(OA)))
             P = A
         else:
             # solving |OA + xAB| = mod_OP
             # (OA + xAB) dot (OA + xAB) = mod_OP ^ 2
             # ax^2 + bx + c = 0 where:
             (a,b,c) = (mod(AB)**2, 2*dot(OA,AB), mod(OA)**2 - mod_OP**2)
-            #print "(a,b,c) are (%s,%s,%s)" % (a,b,c)
             
             #  Solutions for x are : (-b +- (b^2 -4ac)^(1/2))/2a
             if b**2 - 4*a*c < 0:
@@ -701,7 +722,7 @@ class Earthquake():
             OP = tuple([ OA[i] + x*AB[i] for i in [0,1] ])
             P = tuple([ int(O[i] + OP[i]) for i in [0,1] ])
         return P
-         
+                
  
 class Launcher(pygame.sprite.Sprite):
     
@@ -745,7 +766,7 @@ class Launcher(pygame.sprite.Sprite):
         if self.timer > self.time_spacing:
             self.timer = 0
             # Missile properties below could be properties of the launcher, of course
-            missile = Missile(center=self.rect.center,fuel=2000,shield=400,accel_magnitude=self.accel_magnitude,radius=10,colour=RED)
+            missile = Missile(center=self.rect.center,fuel=2000,shield=100,accel_magnitude=self.accel_magnitude,radius=10,colour=RED)
             missile.update(1) # To set the shield on initially
             speed = 100
             # Now wish to set an appropriate initial velocity for the missile - in the direction of the launcher
@@ -1085,7 +1106,7 @@ while True:
     for (asteroid,explosions) in asteroidExplosionCols_dict.items():
         for explosion in explosions:
             if pygame.sprite.collide_mask(asteroid,explosion):
-                    asteroid.current_life -= 1
+                    asteroid.lose_life(1)
                     if asteroid.current_life <= 0:
                         asteroid.kill()
                         Explosion(asteroid.rect.center,asteroid.radius,int(1.5*asteroid.radius))                     
