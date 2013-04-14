@@ -431,6 +431,8 @@ class Game:
         Text.groups = self.textGroup, self.allGroup
         self.explosionGroup = pygame.sprite.Group()
         Explosion.groups = self.explosionGroup, self.allGroup
+        self.earthquakeGroup = pygame.sprite.Group()
+        Earthquake.groups = self.earthquakeGroup, self.allGroup  
         
         # Below, I need to create the launchers.
         # Each sits on a particular asteroid.  If it intersects with any other asteroid, landing pad or ground, it explodes
@@ -452,9 +454,9 @@ class Game:
         self.ground = Ground(self.landingStrip)
         
         for i in range(self.no_of_asteroids):
-            (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + 150,gameRect.bottom - 150))
             (min_rad,max_rad) = (50,120)
             rad = random.randrange(min_rad,max_rad)
+            (x,y) = (random.randrange(gameRect.left,gameRect.right),random.randrange(gameRect.top + rad,gameRect.bottom - rad - 0.2 * screen.get_size()[1]))
             initial_life = int(200 + 200 * (rad - min_rad)/(max_rad - min_rad))
             asteroid = Asteroid(center=(x,y),radius=rad,life=initial_life)
         # Create the missile launchers
@@ -509,24 +511,12 @@ class Asteroid(pygame.sprite.Sprite):
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.radius = radius
-        self.planet_centre = self.rect.center
+        self.centre = self.rect.center
         self.rect.center = center
         self.original_life = life
         self.current_life = self.original_life
         self.earthquakes = []
-        self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,self.planet_centre,[-1,1][random.randrange(2)]))
-
-    def update(self,msecs):
-        
-        if self.current_life > 0:
-            for quake in self.earthquakes:
-                points = quake.update(self.current_life)
-                # Want the colour to fade from black to red
-                proportion = (1 - float(self.current_life) / self.original_life)
-                X = int(proportion * 255)
-                COLOUR = (X,0,0)
-                # Draw the earthquake
-                pygame.draw.lines(self.image, COLOUR, False, points,1)
+        self.earthquakes.append(Earthquake(self,self.centre,[-1,1][random.randrange(2)]))
                 
     def lose_life(self,x):
         self.current_life = self.current_life - x
@@ -539,46 +529,58 @@ class Asteroid(pygame.sprite.Sprite):
             if len(developed_quakes) == 0:
                 # If there are no earthquakes with a non-central vertex, new earthquake
                 # has to start at the centre again
-                starting_point = self.planet_centre
+                starting_point = self.centre
             else:
                 if random.randrange(2) == 0:
-                    starting_point = self.planet_centre
+                    starting_point = self.centre
                 else:
                     quake = developed_quakes[random.randrange(len(developed_quakes))]
                     point_number = random.randrange(1,len(quake.points))
                     starting_point = quake.points[point_number]
                     orientation = quake.orientation * (-1)**(len(quake.points) - point_number + 1)
-            if starting_point == self.planet_centre:
+            if starting_point == self.centre:
                 orientation = [-1,1][random.randrange(2)]
-            self.earthquakes.append(Earthquake(self.planet_centre,self.radius,self.current_life,starting_point,orientation))
+            self.earthquakes.append(Earthquake(self,starting_point,orientation))
         
         
 
-class Earthquake():
+class Earthquake(pygame.sprite.Sprite):
     '''An earthquake is simply a list of points'''
-    def __init__(self,planet_centre,planet_radius,planet_life,starting_point,orientation):
-        self.planet_centre = planet_centre
-        self.planet_radius = planet_radius
-        self.initial_planet_life = planet_life
+    def __init__(self,asteroid,starting_point,orientation):
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.asteroid = asteroid
+        self.image = pygame.Surface((2*asteroid.radius, 2*asteroid.radius))
+        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.rect = self.image.get_rect()
+        self.image = self.image.convert_alpha()
+        self.initial_asteroid_life = asteroid.current_life
         self.points = []
         self.target_point = starting_point
         self.current_point = starting_point
-        #self.orientation = [-1,1][random.randrange(2)]
         self.orientation = orientation
-        self.initial_distance_to_edge = self.planet_radius - math.sqrt(sum([ (starting_point[i] - planet_centre[i])**2 for i in [0,1] ]))
+        self.rect.center = asteroid.rect.center
 
-    def update(self,planet_life):
+
+    def update(self):
         # Are we at the end of a line - if so, choose a new point
         if self.current_point == self.target_point:
             self.points.append(self.target_point)
             self.orientation = -1 * self.orientation
-            self.target_point = self.next_target_point(self.target_point,self.planet_centre,self.points[0],self.planet_radius,self.orientation)
+            self.target_point = self.next_target_point(self.target_point,self.asteroid.centre,self.points[0],self.asteroid.radius,self.orientation)
 
         # Calculate the current point we should be drawing to        
-        self.current_point = self.next_current_point(planet_life,self.initial_planet_life,self.planet_radius,self.planet_centre,self.points[0],self.points[-1],self.target_point)
+        self.current_point = self.next_current_point(self.asteroid.current_life,self.initial_asteroid_life,self.asteroid.radius,self.asteroid.centre,self.points[0],self.points[-1],self.target_point)
         
-        # Return the list of points which draw out the earthquake
-        return self.points + [self.current_point]
+        # Calculate the list of points which draw out the earthquake
+        points_to_draw = self.points + [self.current_point]
+
+        if self.asteroid.current_life > 0:
+            # Want the colour to fade from black to red
+            proportion = (1 - float(self.asteroid.current_life) / self.initial_asteroid_life)
+            X = int(proportion * 255)
+            COLOUR = (X,0,0)
+            # Draw the earthquake
+            pygame.draw.lines(self.image, COLOUR, False, points_to_draw,1)
         
     def next_target_point(self,current_target_point,planet_centre,initial_point,planet_radius,orientation):
         # choose a new target_point:
@@ -1109,6 +1111,8 @@ while True:
                     asteroid.lose_life(1)
                     if asteroid.current_life <= 0:
                         asteroid.kill()
+                        for quake in asteroid.earthquakes:
+                            quake.kill()
                         Explosion(asteroid.rect.center,asteroid.radius,int(1.5*asteroid.radius))                     
             
     
@@ -1128,6 +1132,8 @@ while True:
     #game.explosionGroup.clear(screen,background)
     for engine in Engine.engines:
         engine.clear()
+    game.earthquakeGroup.clear(screen,background)
+    
 
     
     # Then draw everything again
@@ -1144,6 +1150,7 @@ while True:
         engine.draw()
     game.missileGroup.draw(screen)
     game.ballGroup.draw(screen)
+    game.earthquakeGroup.draw(screen)
     
     # Update everything that needs updating
     for explosion in Explosion.explosions:
@@ -1154,10 +1161,11 @@ while True:
     game.textGroup.update()
     game.launcherGroup.update(msecs)
     game.landingStripGroup.update()
+    game.earthquakeGroup.update()
     
     # Currently, the update below draws the earthquakes.
     # Should move this to the draw updates above.
-    game.asteroidGroup.update(msecs)
+    #game.asteroidGroup.update(msecs)
 
 
 
