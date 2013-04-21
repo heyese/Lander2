@@ -838,10 +838,10 @@ class Explosion(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.image.set_colorkey(BLACK) # make the black background transparent
 
-        for temp_radius in range(self.current_radius,1,-5):
+        for temp_radius in range(self.current_radius,6,-5):
             colour_factor = random.randrange(0,256)
             colour = (255, colour_factor, 0) 
-            pygame.draw.circle(self.image, colour, self.rect.center, temp_radius)
+            pygame.draw.circle(self.image, colour, self.rect.center, temp_radius,6)
         self.image.set_alpha(230)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)

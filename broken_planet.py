@@ -217,7 +217,7 @@ class Planet(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, WHITE, self.rect.center, radius, 0)
 
         self.mask = pygame.mask.from_surface(self.image)
-        self.original_life = 300
+        self.original_life = 500
         self.current_life = self.original_life
         
         self.rect.center = (x,y)
@@ -273,7 +273,7 @@ class Planet(pygame.sprite.Sprite):
 
 planetGroup = pygame.sprite.Group()
 Planet.groups = planetGroup
-planet = Planet((600,300),100)
+planet = Planet((600,300),200)
 
 
 
