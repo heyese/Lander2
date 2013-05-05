@@ -3,6 +3,11 @@
 import pygame, sys, random, time, math
 import pygame.locals as var
 
+try:
+    import android
+except ImportError:
+    android = None
+
 # ideas
 
 # The collision detection isn't brilliant.  I really want pixel perfect collision
@@ -25,20 +30,6 @@ import pygame.locals as var
 # Explosions
 # New level and game over graphics
 
-
-# set up pygame
-pygame.init()
-
-# colours
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-RED = (255, 0, 0)
-YELLOW = (255, 255, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-GREY = (119,119,119)
-PINK = (255,200,200)
-
 class Engine():
     # Just playing around here.  Find it very hard to animate anythig!
     # Rotation doesn't work as I hoped it would - things go all squiffy
@@ -55,7 +46,7 @@ class Engine():
         # Want size of engine animation to depend on the accel_magnitude of the item
         self.image = pygame.Surface((2*item.accel_magnitude, 2*item.accel_magnitude))
         self.image_copy = self.image.copy()
-        self.image_copy.fill(BLACK)
+        self.image_copy.fill(game.BLACK)
         self.draw()
 
     def engine_activated(self):
@@ -84,7 +75,7 @@ class Engine():
         
         self.image = self.image_copy.copy()
         self.rect = self.image.get_rect()
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(self.game.BLACK) # make the black background transparent
         
         # Missiles will always be accelerating (unless they're out of fuel? ...)
         # With the ball, we only want animation if we're accelerating
@@ -125,11 +116,11 @@ class Engine():
             Engine.engines.remove(self)
              
 class Ball(pygame.sprite.Sprite):
-    def __init__(self,game,center=(0,0),fuel=0,shield=0,accel_magnitude=0,radius=0,colour=WHITE):
+    def __init__(self,game,center=(0,0),fuel=0,shield=0,accel_magnitude=0,radius=0,colour=(255,255,255)):
         pygame.sprite.Sprite.__init__(self, self.groups)
         self.game = game
         self.image = pygame.Surface((2*radius, 2*radius))
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(game.BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, colour, self.rect.center, radius)
         self.image = self.image.convert_alpha()
@@ -146,7 +137,7 @@ class Ball(pygame.sprite.Sprite):
         self.fuel = fuel
         self.shield = shield
         self.shield_active = False
-        self.shield_colour = BLUE
+        self.shield_colour = game.BLUE
         self.shield_impact_timer = None  # If we hit something, shield animation changes colour for an amount of time
         self.shield_timer_min = 300  # For missiles, shields remain on more than a minimum amount of time
         self.shield_timer = 0
@@ -353,7 +344,7 @@ class Ground(pygame.sprite.Sprite):
         # 1 fifth of the screen up, all the way across
         (width, height) = game.screen.get_size()
         self.image = pygame.Surface((width, int(0.2 * height)))
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(game.BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         self.landingStrip = landingStrip
         
@@ -377,7 +368,7 @@ class Ground(pygame.sprite.Sprite):
             if x == self.rect.right: break
         points.extend([self.rect.bottomright, self.rect.bottomleft])
             
-        pygame.draw.polygon(self.image, GREEN, points)
+        pygame.draw.polygon(self.image, game.GREEN, points)
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.bottomleft = game.gameRect.bottomleft       
@@ -392,6 +383,17 @@ class Game:
     def __init__(self,screen,background,gameRect,clock):
         self.screen = screen
         self.background = background
+        
+        # colours
+        self.BLACK = (0, 0, 0)
+        self.WHITE = (255, 255, 255)
+        self.RED = (255, 0, 0)
+        self.YELLOW = (255, 255, 0)
+        self.GREEN = (0, 255, 0)
+        self.BLUE = (0, 0, 255)
+        self.GREY = (119,119,119)
+        self.PINK = (255,200,200)        
+        
         self.clock = clock
         self.gameRect = gameRect
         self.gravity = 20
@@ -410,7 +412,7 @@ class Game:
         self.no_of_asteroids += 2
         self.no_of_launchers += 2
         self.level_animation()
-        self.screen.fill(BLACK)
+        self.screen.fill(self.BLACK)
         
         # Clear last levels engines and explosions
         Engine.engines = []
@@ -450,7 +452,7 @@ class Game:
         # Create the sprites
         self.text = Text(self)
         ball_center = (random.randrange(self.gameRect.left + 20,self.gameRect.right - 20),self.gameRect.top + 20)
-        self.ball = Ball(self,center=ball_center,fuel=3000,shield=2000,accel_magnitude=200,radius=20,colour=WHITE)
+        self.ball = Ball(self,center=ball_center,fuel=3000,shield=2000,accel_magnitude=200,radius=20,colour=(255,255,255))
         #for i in range(3):
         #    missile_center = (random.randrange(gameRect.left + 20,gameRect.left + 50),random.randrange(gameRect.top + 20,gameRect.bottom - 150))
         #    self.missile = Missile(center=missile_center,fuel=2000,shield=400,accel_magnitude=80,radius=10,colour=RED)
@@ -464,7 +466,7 @@ class Game:
             rad = int(math.sqrt(random.randrange(min_rad**2,max_rad**2)))
             (x,y) = (random.randrange(self.gameRect.left,self.gameRect.right),random.randrange(self.gameRect.top + rad + 2*self.ball.radius,self.gameRect.bottom - rad - 0.2 * self.screen.get_size()[1]))
             initial_life = int(200 + 200 * (rad - min_rad)/(max_rad - min_rad))
-            asteroid = Asteroid(center=(x,y),radius=rad,life=initial_life)
+            asteroid = Asteroid(self,center=(x,y),radius=rad,life=initial_life)
         # Create the missile launchers
         for i in range(self.no_of_launchers):
             # I want to be sure the launchers are in the open, so I keep trying until I get it right
@@ -507,11 +509,11 @@ class Game:
 class Asteroid(pygame.sprite.Sprite):
     
     asteroids = []
-    def __init__(self,center=(0,0),radius=10,life=200):
+    def __init__(self,game,center=(0,0),radius=10,life=200):
         pygame.sprite.Sprite.__init__(self, self.groups)
         Asteroid.asteroids.append(self) # add this instance to the class list
         self.image = pygame.Surface((2*radius, 2*radius))
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(game.BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, (150,150,150), self.rect.center, radius)
         self.image = self.image.convert_alpha()
@@ -548,6 +550,7 @@ class Earthquake(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self, self.groups)
         self.asteroid = asteroid
         self.image = pygame.Surface((2*asteroid.radius, 2*asteroid.radius))
+        BLACK=(0,0,0)
         self.image.set_colorkey(BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         self.image = self.image.convert_alpha()
@@ -752,7 +755,7 @@ class Launcher(pygame.sprite.Sprite):
         self.game = game
         self.asteroid = asteroid
         self.image = pygame.Surface((size, size))
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(game.BLACK) # make the black background transparent
         pygame.draw.polygon(self.image, (100,100,100), [(0,size),(size/2,0),(size,size)])
         self.base_image = self.image
         #rotate surf by DEGREE amount degrees
@@ -785,7 +788,7 @@ class Launcher(pygame.sprite.Sprite):
         if self.timer > self.time_spacing:
             self.timer = 0
             # Missile properties below could be properties of the launcher, of course
-            missile = Missile(self.game,center=self.rect.center,fuel=2000,shield=100,accel_magnitude=self.accel_magnitude,radius=10,colour=RED)
+            missile = Missile(self.game,center=self.rect.center,fuel=2000,shield=100,accel_magnitude=self.accel_magnitude,radius=10,colour=self.game.RED)
             missile.update(1) # To set the shield on initially
             speed = 100
             # Now wish to set an appropriate initial velocity for the missile - in the direction of the launcher
@@ -812,9 +815,9 @@ class Launcher(pygame.sprite.Sprite):
         GREY = (100,100,100)
         
         if proportion > 1:
-            colour = list(RED)
+            colour = list(self.game.RED)
         else:
-            colour = [ (GREY[i] + int((RED[i] - GREY[i]) * (proportion ** 2))) for i in [0,1,2] ]
+            colour = [ (GREY[i] + int((self.game.RED[i] - GREY[i]) * (proportion ** 2))) for i in [0,1,2] ]
         pygame.draw.polygon(self.image, colour, [(0,self.size),(self.size/2,0),(self.size,self.size)])
         self.image = pygame.transform.rotate(self.image, self.degree)
         
@@ -828,7 +831,7 @@ class Explosion(pygame.sprite.Sprite):
         Explosion.explosions.append(self)
         self.image = pygame.Surface((2*final_radius, 2*final_radius))
         self.image_copy = self.image.copy()
-        self.image_copy.fill(BLACK)
+        self.image_copy.fill(game.BLACK)
 
         self.initial_radius = initial_radius
         self.final_radius = final_radius
@@ -844,7 +847,7 @@ class Explosion(pygame.sprite.Sprite):
 
         self.image = self.image_copy.copy()
         self.rect = self.image.get_rect()
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(self.game.BLACK) # make the black background transparent
 
         for temp_radius in range(self.current_radius,6,-5):
             colour_factor = random.randrange(0,256)
@@ -889,8 +892,8 @@ class Text(pygame.sprite.Sprite):
         self.game = game
         self.font = pygame.font.Font(None, 36)
         text_string = ''
-        self.image = self.font.render(text_string, 0, WHITE, BLACK)
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image = self.font.render(text_string, 0, game.WHITE, game.BLACK)
+        self.image.set_colorkey(game.BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
         
     def update(self):
@@ -904,7 +907,7 @@ class Text(pygame.sprite.Sprite):
         fps = "FPS: %0.1f" % self.game.clock.get_fps()
         level = "Level: %s" % self.game.level
         text_string = fuel.ljust(20) + shield.ljust(20) + fps.ljust(20) + velocity.ljust(30) + speed.ljust(20) + level.ljust(20)
-        self.image = self.font.render(text_string, 0, WHITE, BLACK)
+        self.image = self.font.render(text_string, 0, self.game.WHITE, self.game.BLACK)
 
 class LandingStrip(pygame.sprite.Sprite):
     def __init__(self,game,topleft=(0,0),length=30):
@@ -913,9 +916,9 @@ class LandingStrip(pygame.sprite.Sprite):
         self.image = pygame.Surface((length, 10))
         self.length = length
         self.maxLandingSpeed = 30
-        self.image.set_colorkey(BLACK) # make the black background transparent
+        self.image.set_colorkey(game.BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
-        pygame.draw.rect(self.image, BLUE, (0,0,length,10))
+        pygame.draw.rect(self.image, game.BLUE, (0,0,length,10))
         self.image = self.image.convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.topleft = topleft
@@ -926,11 +929,11 @@ class LandingStrip(pygame.sprite.Sprite):
         # if ship is too far away, go back to normal colour
         if math.sqrt((self.game.ball.x - self.rect.center[0]) ** 2 + (self.game.ball.y - self.rect.center[1]) ** 2) < 100:
             if abs(math.sqrt(self.game.ball.x_vel ** 2 + self.game.ball.y_vel ** 2)) > self.maxLandingSpeed:
-                pygame.draw.rect(self.image,RED,(0,0,self.length,10))
+                pygame.draw.rect(self.image,self.game.RED,(0,0,self.length,10))
             else:
-                pygame.draw.rect(self.image,YELLOW,(0,0,self.length,10))
+                pygame.draw.rect(self.image,self.game.YELLOW,(0,0,self.length,10))
         else:
-            pygame.draw.rect(self.image,BLUE,(0,0,self.length,10))
+            pygame.draw.rect(self.image,self.game.BLUE,(0,0,self.length,10))
         
         
 def handle_collisions(game):
@@ -1135,9 +1138,19 @@ def update_all_objects(game,msecs):
     
 #############################################################################################
 def main():
+
+    # set up pygame
+    pygame.init()
+
     # set up the window
     screen = pygame.display.set_mode((1300, 650), 0, 32)    # Can use pygame.FULLSCREEN instead of 0
 
+    # Map the back button to the escape key.
+    if android:
+        android.init()
+        android.map_key(android.KEYCODE_BACK, pygame.K_ESCAPE)
+    
+    BLACK = (0,0,0)
     background = pygame.Surface(screen.get_size())  # Create empty pygame surface
     background.fill(BLACK)     # Fill the background white color (red,green,blue)
     background = background.convert()  # Convert Surface to make blitting faster
@@ -1166,7 +1179,7 @@ def main():
         keystate = pygame.key.get_pressed()
         
         # Currently, hitting return starts a new game
-        if keystate[var.K_RETURN]:
+        if (keystate[var.K_RETURN] or pygame.mouse.get_pressed()[0] == True) and NOT_YET == True:
             game = Game(screen,background,gameRect,clock)
             NOT_YET = False
         #if keystate[var.K_n]:   # registers several hits, so can jump many levels in one!
