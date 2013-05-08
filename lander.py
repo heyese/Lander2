@@ -135,10 +135,15 @@ class Ball(pygame.sprite.Sprite):
         (self.x,self.y) = center    
         (self.x_accel,self.y_accel) = (0,0)
         self.fuel = fuel
+        self.random_timer = 0
+        self.random_offset = (random.randrange(-40,40),random.randrange(-40,40))
+        self.new_level_shield_timer = 0
         self.shield = shield
         self.shield_active = False
         self.shield_colour = game.BLUE
+        self.shield_timer = 0   # Shield energy decreases at an increasing rate if shield is left on over time ...
         self.shield_impact_timer = None  # If we hit something, shield animation changes colour for an amount of time
+        self.shield_recharge_timer = 0  # If shield isn't used, it slowly recharges ...
         self.shield_timer_min = 300  # For missiles, shields remain on more than a minimum amount of time
         self.shield_timer = 0
         self.engine = Engine(self,game)
@@ -180,7 +185,7 @@ class Ball(pygame.sprite.Sprite):
     
     def update(self,msecs):
         self.update_mouse_angle_to_ball()
-        self.update_shield()
+        self.update_shield(msecs)
         self.draw_shield(msecs)
         self.update_vel(msecs)
         self.update_pos(msecs)
@@ -201,12 +206,23 @@ class Ball(pygame.sprite.Sprite):
                 if self.shield_impact_timer > 150: self.shield_impact_timer = None
     
 
-    def update_shield(self):
-        if (pygame.mouse.get_pressed()[2] == True or self.game.keystate[var.K_s]) and self.shield > 0:
-            self.shield -= 1
+    def update_shield(self,msecs):
+        if ((pygame.mouse.get_pressed()[2] == True or self.game.keystate[var.K_s]) and self.shield > 0) or self.new_level_shield_timer < 1000:
+            self.new_level_shield_timer += msecs  # Shield automatically on for first second of each level
+            self.shield_recharge_timer = 0
+            self.shield_timer += msecs
+            shield_drain = max(self.shield_timer / 1000, 1)
+            self.shield -= shield_drain
+            if self.shield < 0: self.shield = 0
             self.shield_active = True
         else:
             self.shield_active = False
+            self.shield_timer = 0
+            self.shield_recharge_timer += msecs
+            # If you've not used your shield for more than a second, it begins to recharge
+            if self.shield_recharge_timer > 300:
+                self.shield += 1
+                self.shield_recharge_timer = 0
        
     def update_accel(self):
         if pygame.mouse.get_pressed()[0] == True or self.game.keystate[var.K_a]:
@@ -287,7 +303,7 @@ class Ball(pygame.sprite.Sprite):
 class Missile(Ball):
     
     def update(self,msecs):
-        self.update_ball_angle_to_missile()
+        self.update_ball_angle_to_missile(msecs)
         self.update_shield(msecs)
         self.draw_shield(msecs)
         self.update_vel(msecs)
@@ -295,9 +311,13 @@ class Missile(Ball):
         self.update_accel()        
 
 
-    def update_ball_angle_to_missile(self):
+    def update_ball_angle_to_missile(self,msecs):
         #(x,y) = (game.ball.x - self.rect.centerx,game.ball.y - self.rect.centery)
-        (x,y) = (self.game.ball.x + self.game.ball.x_vel - self.rect.centerx,self.game.ball.y + self.game.ball.y_vel - self.rect.centery)
+        # Don't want what the missiles do to be completely deterministic, so I have a random element to this point towards which the missile will accelerate
+        if self.random_timer > 400:
+            self.random_timer = 0
+            self.random_offset = (random.randrange(-20,20),random.randrange(-20,20))
+        (x,y) = (self.game.ball.x + self.random_offset[0] - self.rect.centerx,self.game.ball.y + self.random_offset[1] - self.rect.centery)
         if x == 0:
             #if y == 0:
             #    return (0,0)  # Click on dead center of ball, no force / acceleration applied
@@ -512,6 +532,7 @@ class Asteroid(pygame.sprite.Sprite):
     def __init__(self,game,center=(0,0),radius=10,life=200):
         pygame.sprite.Sprite.__init__(self, self.groups)
         Asteroid.asteroids.append(self) # add this instance to the class list
+        self.game = game
         self.image = pygame.Surface((2*radius, 2*radius))
         self.image.set_colorkey(game.BLACK) # make the black background transparent
         self.rect = self.image.get_rect()
@@ -532,6 +553,12 @@ class Asteroid(pygame.sprite.Sprite):
         # Quite want big asteroids, which have more life, to have more earthquakes
         if random.randrange(35) == 0: 
             self.earthquake.new_quake()
+            
+    def update(self):
+        if self.current_life <= 0:
+            self.kill()
+            self.earthquake.kill()
+            Explosion(self.game,self.rect.center,self.radius,int(1.5*self.radius))    
         
 class Quake():
     # Yes, I've managed to utterly confuse myself.
@@ -969,7 +996,12 @@ def handle_collisions(game):
                     game.next_level()
                 else:
                     # We are colliding with something solid!
+                    # If object is an asteroid, it should lose life proportional to our speed
+                    if item in Asteroid.asteroids:
+                        speed = math.sqrt(ball.x_vel ** 2 + ball.y_vel ** 2)
+                        item.current_life -= speed / 10
                     ball.fixed_collision((x,y))
+                    
     
     # Has a missile collided with anything solid - ground or asteroid or landing pad - that isn't the ball or another missile?
     for (missile, items) in missilesStaticSolidsCols_dict.items():
@@ -1088,10 +1120,7 @@ def handle_collisions(game):
         for explosion in explosions:
             if pygame.sprite.collide_mask(asteroid,explosion):
                     asteroid.lose_life(1)
-                    if asteroid.current_life <= 0:
-                        asteroid.kill()
-                        asteroid.earthquake.kill()
-                        Explosion(game,asteroid.rect.center,asteroid.radius,int(1.5*asteroid.radius))                     
+                 
                 
 def clear_screen(game,screen,background):
     # First job is to rub everything out
@@ -1134,7 +1163,9 @@ def update_all_objects(game,msecs):
     game.textGroup.update()
     game.launcherGroup.update(msecs)
     game.landingStripGroup.update()
+    game.asteroidGroup.update()
     game.earthquakeGroup.update()
+    
     
 #############################################################################################
 def main():
@@ -1174,17 +1205,16 @@ def main():
             if event.type == var.QUIT:
                 pygame.quit()
                 sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN and (not 'game' in locals() or game.game_over == True):
+                game = Game(screen,background,gameRect,clock)
+
         
+        if android:
+            if android.check_pause():
+                android.wait_for_resume()        
         
-        keystate = pygame.key.get_pressed()
-        
-        # Currently, hitting return starts a new game
-        if (keystate[var.K_RETURN] or pygame.mouse.get_pressed()[0] == True) and NOT_YET == True:
-            game = Game(screen,background,gameRect,clock)
-            NOT_YET = False
-        #if keystate[var.K_n]:   # registers several hits, so can jump many levels in one!
-        #    game.next_level()   
-        if NOT_YET == True: continue
+        keystate = pygame.key.get_pressed() 
+        if not 'game' in locals(): continue
                 
         game.keystate = keystate    
 
@@ -1192,7 +1222,7 @@ def main():
         clear_screen(game,screen,background)
         prepare_screen_for_drawing(game,screen)
         update_all_objects(game,msecs)
-        
+
         # draw the window onto the screen
         pygame.display.update()
 
